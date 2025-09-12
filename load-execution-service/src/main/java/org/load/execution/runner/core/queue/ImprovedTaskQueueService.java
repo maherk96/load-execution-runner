@@ -79,8 +79,7 @@ public class ImprovedTaskQueueService {
             return thread;
         });
 
-        // Shared thread pool for task execution (configurable concurrency)
-        this.taskRunnerPool = Executors.newFixedThreadPool(config.getMaxConcurrentTasks(), runnable -> {
+        this.taskRunnerPool = Executors.newSingleThreadExecutor(runnable -> {
             Thread thread = new Thread(runnable, "TaskRunner");
             thread.setDaemon(false);
             thread.setUncaughtExceptionHandler(this::handleUncaughtException);
