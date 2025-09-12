@@ -1,8 +1,9 @@
-package org.load.execution.runner;
+package org.load.execution.runner.api.dto;
 
 import com.fasterxml.jackson.annotation.JsonAnyGetter;
 import com.fasterxml.jackson.annotation.JsonAnySetter;
 import lombok.Data;
+import org.load.execution.runner.core.model.TaskType;
 
 import java.time.LocalDateTime;
 import java.util.HashMap;

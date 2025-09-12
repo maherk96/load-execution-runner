@@ -1,4 +1,4 @@
-package org.load.execution.runner;
+package org.load.execution.runner.api.dto;
 
 
 public class TaskResponseDto {

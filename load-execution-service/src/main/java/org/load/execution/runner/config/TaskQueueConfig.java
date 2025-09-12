@@ -1,4 +1,4 @@
-package org.load.execution.runner;
+package org.load.execution.runner.config;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
@@ -12,7 +12,7 @@ public class TaskQueueConfig {
     private int shutdownTimeoutSeconds = 30;
     private int taskHistoryRetentionHours = 168; // 7 days
     private long taskTimeoutMinutes = 60;
-    private int maxConcurrentTasks = 1; // For single-task guarantee, but configurable
+    private int maxConcurrentTasks = 2; // For single-task guarantee, but configurable
     private boolean drainQueueOnShutdown = true;
 
     // Getters and setters

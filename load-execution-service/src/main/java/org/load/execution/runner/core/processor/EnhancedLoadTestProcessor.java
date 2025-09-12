@@ -1,16 +1,22 @@
-package org.load.execution.runner;
+package org.load.execution.runner.core.processor;
 
-import org.springframework.stereotype.Component;
+import org.load.execution.runner.api.dto.TaskDto;
+import org.load.execution.runner.core.model.TaskType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
+import org.springframework.stereotype.Component;
 
 import java.util.Map;
-import java.util.concurrent.*;
+import java.util.Random;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.Random;
 
 @Component
 public class EnhancedLoadTestProcessor implements InterruptibleTaskProcessor, ValidatableTaskProcessor {

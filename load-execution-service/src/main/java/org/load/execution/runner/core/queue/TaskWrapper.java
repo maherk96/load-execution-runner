@@ -1,4 +1,6 @@
-package org.load.execution.runner;
+package org.load.execution.runner.core.queue;
+
+import org.load.execution.runner.api.dto.TaskDto;
 
 import java.time.LocalDateTime;
 import java.util.concurrent.Future;

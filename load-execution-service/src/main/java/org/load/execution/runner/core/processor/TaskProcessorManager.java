@@ -1,5 +1,8 @@
-package org.load.execution.runner;
+package org.load.execution.runner.core.processor;
 
+import org.load.execution.runner.api.dto.TaskDto;
+import org.load.execution.runner.config.TaskQueueConfig;
+import org.load.execution.runner.core.model.TaskType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;

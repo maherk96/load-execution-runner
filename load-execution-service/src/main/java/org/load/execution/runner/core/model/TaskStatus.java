@@ -1,4 +1,4 @@
-package org.load.execution.runner;
+package org.load.execution.runner.core.model;
 
 public enum TaskStatus {
     QUEUED,

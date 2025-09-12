@@ -1,4 +1,6 @@
-package org.load.execution.runner;
+package org.load.execution.runner.core.processor;
+
+import org.load.execution.runner.api.dto.TaskDto;
 
 public interface ValidatableTaskProcessor {
     /**

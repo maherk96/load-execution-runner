@@ -1,7 +1,19 @@
-package org.load.execution.runner;
+package org.load.execution.runner.core.queue;
 
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
+import org.load.execution.runner.api.dto.TaskDto;
+import org.load.execution.runner.api.dto.TaskExecution;
+import org.load.execution.runner.api.dto.TaskResponseDto;
+import org.load.execution.runner.api.exception.RejectedTaskException;
+import org.load.execution.runner.config.TaskQueueConfig;
+import org.load.execution.runner.core.history.TaskHistoryService;
+import org.load.execution.runner.core.model.ServiceState;
+import org.load.execution.runner.core.model.TaskStatus;
+import org.load.execution.runner.core.model.TaskType;
+import org.load.execution.runner.core.processor.InterruptibleTaskProcessor;
+import org.load.execution.runner.core.processor.TaskProcessor;
+import org.load.execution.runner.core.processor.TaskProcessorManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
@@ -120,7 +132,7 @@ public class ImprovedTaskQueueService {
 
             return queueTask(task);
 
-        } catch (ServiceException e) {
+        } catch (RejectedTaskException e) {
             logger.warn("Task submission rejected: {}", e.getMessage());
             return createErrorResponse(taskId, e.getMessage());
         } catch (Exception e) {

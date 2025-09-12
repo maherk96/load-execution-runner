@@ -1,5 +1,18 @@
-package org.load.execution.runner;
+package org.load.execution.runner.core.queue;
 
+import org.load.execution.runner.api.dto.TaskDto;
+import org.load.execution.runner.api.dto.TaskExecution;
+import org.load.execution.runner.api.exception.DuplicateTaskException;
+import org.load.execution.runner.api.exception.InvalidTaskException;
+import org.load.execution.runner.api.exception.NoProcessorException;
+import org.load.execution.runner.api.exception.NoProcessorsException;
+import org.load.execution.runner.api.exception.QueueCapacityException;
+import org.load.execution.runner.api.exception.ServiceShutdownException;
+import org.load.execution.runner.api.exception.TaskValidationException;
+import org.load.execution.runner.config.TaskQueueConfig;
+import org.load.execution.runner.core.history.TaskHistoryService;
+import org.load.execution.runner.core.model.TaskType;
+import org.load.execution.runner.core.processor.TaskProcessorManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -104,13 +117,13 @@ public class TaskValidator {
         
         if (!processorManager.hasProcessor(taskType)) {
             logger.warn("Task {} rejected - no processor for type: {}", taskId, taskType);
-            throw new NoProcessorException(String.format("No processor available for task type: %s. Available types: %s", 
+            throw new NoProcessorException(String.format("No processor available for task type: %s. Available types: %s",
                 taskType, processorManager.getAvailableTaskTypes()));
         }
         
         if (currentQueueSize >= config.getMaxQueueSize()) {
             logger.warn("Task {} rejected - queue capacity exceeded: {}", taskId, currentQueueSize);
-            throw new QueueCapacityException(String.format("Queue capacity exceeded (%d tasks). Please try again later.", 
+            throw new QueueCapacityException(String.format("Queue capacity exceeded (%d tasks). Please try again later.",
                 currentQueueSize));
         }
         

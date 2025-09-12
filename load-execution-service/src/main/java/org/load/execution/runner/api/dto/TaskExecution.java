@@ -1,4 +1,7 @@
-package org.load.execution.runner;
+package org.load.execution.runner.api.dto;
+
+import org.load.execution.runner.core.model.TaskStatus;
+import org.load.execution.runner.core.model.TaskType;
 
 import java.time.LocalDateTime;
 

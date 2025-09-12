@@ -1,4 +1,7 @@
-package org.load.execution.runner;
+package org.load.execution.runner.core.processor;
+
+import org.load.execution.runner.api.dto.TaskDto;
+import org.load.execution.runner.core.model.TaskType;
 
 public interface TaskProcessor {
     TaskType getTaskType();
