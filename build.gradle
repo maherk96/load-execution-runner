@@ -1,0 +1,27 @@
+plugins {
+    id 'java-platform'
+}
+
+group = 'org.example'
+version = '1.0-SNAPSHOT'
+
+javaPlatform {
+    allowDependencies()
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    constraints {
+        api 'org.apache.logging.log4j:log4j-api:2.20.0'
+        api 'org.apache.logging.log4j:log4j-core:2.20.0'
+        api 'org.apache.logging.log4j:log4j-slf4j-impl:2.20.0'
+        api 'org.projectlombok:lombok:1.18.30'
+        api 'com.fasterxml.jackson.core:jackson-databind:2.15.2'
+        api 'com.fasterxml.jackson.core:jackson-core:2.15.2'
+        api 'com.fasterxml.jackson.core:jackson-annotations:2.15.2'
+        api 'jakarta.annotation:jakarta.annotation-api:1.3.5'
+    }
+}
