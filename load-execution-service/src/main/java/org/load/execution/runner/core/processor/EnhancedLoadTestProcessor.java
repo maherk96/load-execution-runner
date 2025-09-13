@@ -227,6 +227,7 @@ public class EnhancedLoadTestProcessor implements InterruptibleTaskProcessor, Va
 
     @Override
     public void validateTask(TaskDto task) throws IllegalArgumentException {
+        logger.info("Validating load test task: {}", task.getTaskId());
         Map<String, Object> data = task.getData();
 
         if (data == null || data.isEmpty()) {

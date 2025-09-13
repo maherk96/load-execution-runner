@@ -1,11 +1,15 @@
 package org.load.execution.runner.core.queue;
 
+import lombok.Data;
+import lombok.Getter;
 import org.load.execution.runner.api.dto.TaskDto;
 
 import java.time.LocalDateTime;
 import java.util.concurrent.Future;
 
+@Data
 class TaskWrapper {
+
     private final TaskDto task;
     private final LocalDateTime queuedAt;
     private volatile Future<Void> executionFuture;
@@ -16,31 +20,24 @@ class TaskWrapper {
         this.queuedAt = LocalDateTime.now();
     }
 
-    public TaskDto getTask() {
-        return task;
-    }
-
-    public LocalDateTime getQueuedAt() {
-        return queuedAt;
-    }
-
-    void setExecutionFuture(Future<Void> future) {
-        this.executionFuture = future;
-    }
-
     /**
      * Cancel this task execution
      * @return true if cancellation was successful
      */
     boolean cancel() {
-        cancelled = true;
-        if (executionFuture != null) {
-            return executionFuture.cancel(true); // Interrupt if running
+        if (cancelled) {
+            return executionFuture == null || executionFuture.isCancelled();
         }
-        return true;
-    }
 
-    boolean isCancelled() {
-        return cancelled;
+        if (executionFuture != null) {
+            boolean success = executionFuture.cancel(true);
+            if (success) {
+                cancelled = true;
+            }
+            return success;
+        }
+
+        cancelled = true;
+        return true;
     }
 }

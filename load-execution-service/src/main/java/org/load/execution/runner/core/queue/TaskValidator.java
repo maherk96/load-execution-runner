@@ -1,5 +1,6 @@
 package org.load.execution.runner.core.queue;
 
+import lombok.Data;
 import org.load.execution.runner.api.dto.TaskDto;
 import org.load.execution.runner.api.dto.TaskExecution;
 import org.load.execution.runner.api.exception.DuplicateTaskException;
@@ -20,6 +21,7 @@ import org.springframework.stereotype.Component;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 
+@Data
 @Component
 public class TaskValidator {
     private static final Logger logger = LoggerFactory.getLogger(TaskValidator.class);
@@ -35,10 +37,7 @@ public class TaskValidator {
         this.historyService = historyService;
     }
     
-    public void setShuttingDown(boolean shuttingDown) {
-        this.isShuttingDown = shuttingDown;
-    }
-    
+
     public void validateServiceState() {
         if (isShuttingDown) {
             logger.warn("Task submission rejected - service is shutting down");

@@ -79,7 +79,7 @@ public class ImprovedTaskQueueService {
             return thread;
         });
 
-        this.taskRunnerPool = Executors.newSingleThreadExecutor(runnable -> {
+        this.taskRunnerPool = Executors.newFixedThreadPool(config.getMaxConcurrentTasks(), runnable -> {
             Thread thread = new Thread(runnable, "TaskRunner");
             thread.setDaemon(false);
             thread.setUncaughtExceptionHandler(this::handleUncaughtException);
@@ -102,6 +102,7 @@ public class ImprovedTaskQueueService {
         startProcessing();
         startMaintenanceTasks();
 
+        logger.info("Config loaded {}",config);
         logger.info("TaskQueueService initialized - State: {}, Max Concurrent Tasks: {}",
                 serviceState, config.getMaxConcurrentTasks());
     }
@@ -359,7 +360,7 @@ public class ImprovedTaskQueueService {
             // Check for pre-processing cancellation
             if (wrapper.isCancelled()) {
                 logger.info("Task was cancelled before processing started");
-                historyService.markCancelled(taskId, 0, "Task cancelled before processing");
+                //historyService.markCancelled(taskId, 0, "Task cancelled before processing");
                 return; // Exit early, don't continue processing
             }
 
