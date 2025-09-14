@@ -29,18 +29,12 @@ public class LoadHttpClientTaskProcessor implements InterruptibleTaskProcessor, 
     public void processTask(TaskDto task) throws Exception {
         logger.info("Starting LoadHttpClientTaskProcessor for task: {}", task.getTaskId());
 
-        // Validate first (throws IllegalArgumentException if bad config)
         validateTask(task);
-
-        // Build TestPlanSpec from task data
         TestPlanSpec testPlanSpec = buildTestPlanSpecFromTask(task);
-
         runner = new LoadTestExecutionRunner(testPlanSpec);
-
         CompletableFuture<Void> future = runner.execute();
 
         try {
-            // Add a timeout so we don't hang forever
             long timeout = calculateTimeoutSeconds(testPlanSpec);
             logger.info("Awaiting load test completion (timeout={}s)", timeout);
             future.get(timeout, TimeUnit.SECONDS);
@@ -54,9 +48,13 @@ public class LoadHttpClientTaskProcessor implements InterruptibleTaskProcessor, 
                 runner.terminateTest("TIMEOUT_OR_FAILURE");
             }
             throw e;
+        } finally {
+            // ADD THIS: Always cleanup, regardless of success or failure
+            if (runner != null) {
+                runner.cleanup();
+            }
         }
     }
-
     @Override
     public void cancelTask(TaskDto task) {
         logger.info("Cancelling load test task: {}", task.getTaskId());

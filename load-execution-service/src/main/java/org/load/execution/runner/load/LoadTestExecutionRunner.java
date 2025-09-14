@@ -86,8 +86,6 @@ public class LoadTestExecutionRunner {
                 log.error("Load test execution failed", e);
                 phaseManager.terminateTest("EXECUTION_ERROR: " + e.getMessage());
                 throw new RuntimeException("Load test execution failed", e);
-            } finally {
-                cleanup();
             }
         }, resourceManager.getMainExecutor());
     }
