@@ -337,7 +337,6 @@ class ImprovedTaskQueueServiceTest {
         assertThat(service.getServiceState()).isEqualTo(ServiceState.RUNNING);
     }
 
-    @Disabled
     @Test
     void processTask_timeout_marksTimedOut() throws Exception {
         TaskDto task = new TaskDto();

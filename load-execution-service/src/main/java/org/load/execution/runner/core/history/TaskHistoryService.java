@@ -106,18 +106,17 @@ public class TaskHistoryService {
     public int getHistorySize() {
         return taskHistory.size();
     }
-    
-    private void updateTaskHistory(String taskId, TaskStatus status, LocalDateTime startedAt, 
-                                  LocalDateTime completedAt, long processingTimeMs, String errorMessage) {
-        TaskExecution existing = taskHistory.get(taskId);
-        if (existing != null) {
-            TaskExecution updated = new TaskExecution(
-                taskId, existing.getTaskType(), status, existing.getQueuedAt(),
-                startedAt != null ? startedAt : existing.getStartedAt(), 
-                completedAt, processingTimeMs, errorMessage, existing.getQueuePosition()
-            );
-            taskHistory.put(taskId, updated);
-        }
+
+    private void updateTaskHistory(String taskId, TaskStatus status,
+                                   LocalDateTime startedAt, LocalDateTime completedAt,
+                                   long processingTimeMs, String errorMessage) {
+        taskHistory.computeIfPresent(taskId, (key, existing) ->
+                new TaskExecution(
+                        taskId, existing.getTaskType(), status, existing.getQueuedAt(),
+                        startedAt != null ? startedAt : existing.getStartedAt(),
+                        completedAt, processingTimeMs, errorMessage, existing.getQueuePosition()
+                )
+        );
     }
     
     @Scheduled(fixedRate = 3600000) // Every hour

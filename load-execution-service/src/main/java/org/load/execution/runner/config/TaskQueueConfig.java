@@ -12,9 +12,8 @@ public class TaskQueueConfig {
     private int maxTaskAgeHours = 24;
     private int maxTaskIdLength = 255;
     private int shutdownTimeoutSeconds = 30;
-    private int taskHistoryRetentionHours = 168; // 7 days
+    private int taskHistoryRetentionHours = 168;
     private long taskTimeoutMinutes = 60;
-    private int maxConcurrentTasks = 1; // For single-task guarantee, but configurable
+    private int maxConcurrentTasks = 1;
     private boolean drainQueueOnShutdown = true;
-
 }
