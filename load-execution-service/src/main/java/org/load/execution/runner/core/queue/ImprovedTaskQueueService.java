@@ -79,14 +79,14 @@ public class ImprovedTaskQueueService {
             return thread;
         });
 
-        this.taskRunnerPool = Executors.newFixedThreadPool(config.getMaxConcurrentTasks(), runnable -> {
+        this.taskRunnerPool = Executors.newSingleThreadExecutor( runnable -> {
             Thread thread = new Thread(runnable, "TaskRunner");
             thread.setDaemon(false);
             thread.setUncaughtExceptionHandler(this::handleUncaughtException);
             return thread;
         });
 
-        this.maintenanceExecutor = Executors.newScheduledThreadPool(1, runnable -> {
+        this.maintenanceExecutor = Executors.newSingleThreadScheduledExecutor( runnable -> {
             Thread thread = new Thread(runnable, "TaskQueueMaintenance");
             thread.setDaemon(true);
             return thread;
@@ -405,17 +405,7 @@ public class ImprovedTaskQueueService {
 
             logger.info("COMPLETED task in {}ms - Total completed: {}", duration, completedTasks.get());
 
-        } catch (InterruptedException e) {
-            wasCancelled = true;
-            if (!taskStatusSet) {
-                long duration = System.currentTimeMillis() - startTime;
-                historyService.markCancelled(taskId, duration, "Task was cancelled");
-                failedTasks.incrementAndGet();
-                taskStatusSet = true;
-                logger.info("Task CANCELLED after {}ms", duration); // Changed from ERROR/WARN to INFO
-            }
-
-        } catch (CancellationException e) {
+        } catch (InterruptedException | CancellationException e) {
             wasCancelled = true;
             if (!taskStatusSet) {
                 long duration = System.currentTimeMillis() - startTime;

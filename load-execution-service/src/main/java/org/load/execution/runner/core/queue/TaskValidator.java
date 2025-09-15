@@ -71,6 +71,11 @@ public class TaskValidator {
             logger.warn("Task {} rejected - missing task type", taskId);
             throw new InvalidTaskException("Task type is required");
         }
+
+        if (task.getTaskId() == null) {
+            logger.warn("Task {} rejected - missing task ID", taskId);
+            throw new InvalidTaskException("Task ID is required");
+        }
         
         if (task.getCreatedAt() == null) {
             logger.warn("Task {} rejected - missing creation timestamp", taskId);
