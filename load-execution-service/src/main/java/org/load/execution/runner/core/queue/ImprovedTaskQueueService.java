@@ -174,14 +174,15 @@ public class ImprovedTaskQueueService {
                 notifyProcessorOfCancellation(currentWrapper.getTask());
 
                 if (cancelled) {
-                    historyService.markCancelled(taskId, 0, "Task cancelled by user request");
-                    return new TaskResponseDto(taskId, "CANCELLED", "Task was cancelled successfully");
+                    // DON'T mark as cancelled here - let the task processor handle it with proper timing
+                    // The processTaskSafely method will catch the cancellation and log with correct duration
+                    return new TaskResponseDto(taskId, "CANCELLED", "Task cancellation requested");
                 } else {
                     return createErrorResponse(taskId, "Failed to cancel running task");
                 }
             }
 
-            // Try to cancel queued task
+            // Try to cancel queued task (this one can still be immediate since it never started)
             boolean removedFromQueue = removeFromQueue(taskId);
             if (removedFromQueue) {
                 historyService.markCancelled(taskId, 0, "Task cancelled by user request before processing");
@@ -196,6 +197,7 @@ public class ImprovedTaskQueueService {
             MDC.remove("taskId");
         }
     }
+
 
     public TaskResponseDto getTaskStatus(String taskId) {
         if (taskId == null || taskId.trim().isEmpty()) {
@@ -352,7 +354,7 @@ public class ImprovedTaskQueueService {
         TaskDto task = wrapper.getTask();
         String taskId = task.getTaskId();
         long startTime = System.currentTimeMillis();
-        boolean taskStatusSet = false; // Track if status was already set
+        boolean taskStatusSet = false;
 
         try {
             MDC.put("taskId", taskId);
@@ -360,8 +362,9 @@ public class ImprovedTaskQueueService {
             // Check for pre-processing cancellation
             if (wrapper.isCancelled()) {
                 logger.info("Task was cancelled before processing started");
-                //historyService.markCancelled(taskId, 0, "Task cancelled before processing");
-                return; // Exit early, don't continue processing
+                long duration = System.currentTimeMillis() - startTime;
+                historyService.markCancelled(taskId, duration, "Task cancelled before processing");
+                return;
             }
 
             logger.info("STARTED processing task - Type: {}, Queue size: {}",
@@ -369,7 +372,7 @@ public class ImprovedTaskQueueService {
 
             historyService.markProcessing(taskId);
 
-            // Submit to shared thread pool instead of creating per-task executor
+            // Submit to shared thread pool
             Future<Void> executionFuture = taskRunnerPool.submit(() -> {
                 try {
                     MDC.put("taskId", taskId);
@@ -405,24 +408,22 @@ public class ImprovedTaskQueueService {
                 historyService.markCancelled(taskId, duration, "Task was cancelled");
                 failedTasks.incrementAndGet();
                 taskStatusSet = true;
-                logger.warn("Task CANCELLED after {}ms", duration);
+                logger.info("Task CANCELLED after {}ms", duration); // Changed from WARN to INFO
             }
-            // Don't re-interrupt here as we're handling it appropriately
 
         } catch (CancellationException e) {
-            // Handle CancellationException specifically as a cancellation, not a failure
             if (!taskStatusSet) {
                 long duration = System.currentTimeMillis() - startTime;
                 historyService.markCancelled(taskId, duration, "Task was cancelled");
                 failedTasks.incrementAndGet();
                 taskStatusSet = true;
-                logger.warn("Task CANCELLED after {}ms (CancellationException)", duration);
+                logger.info("Task CANCELLED after {}ms (CancellationException)", duration); // Changed from WARN to INFO
             }
 
         } catch (TimeoutException e) {
             if (!taskStatusSet) {
                 long duration = System.currentTimeMillis() - startTime;
-                wrapper.cancel(); // Cancel the execution
+                wrapper.cancel();
                 historyService.markFailed(taskId, duration, "Task timeout after " + config.getTaskTimeoutMinutes() + " minutes");
                 failedTasks.incrementAndGet();
                 taskStatusSet = true;
@@ -430,12 +431,10 @@ public class ImprovedTaskQueueService {
             }
 
         } catch (Exception e) {
-            // Only mark as failed if status hasn't been set yet
             if (!taskStatusSet) {
                 long duration = System.currentTimeMillis() - startTime;
                 failedTasks.incrementAndGet();
 
-                // Ensure error message is never null
                 String errorMessage = e.getMessage();
                 if (errorMessage == null) {
                     errorMessage = "Unknown error: " + e.getClass().getSimpleName();
@@ -445,7 +444,6 @@ public class ImprovedTaskQueueService {
                 taskStatusSet = true;
                 logger.error("Task FAILED after {}ms - Error: {}", duration, errorMessage, e);
             } else {
-                // Task status already set, just log the cleanup exception
                 logger.debug("Ignoring cleanup exception - task status already set: {}",
                         e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName());
             }
