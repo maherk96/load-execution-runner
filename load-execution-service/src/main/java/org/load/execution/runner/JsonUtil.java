@@ -9,6 +9,8 @@ import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.databind.json.JsonMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 
+import java.util.Map;
+
 public class JsonUtil {
 
   private static final ObjectMapper MAPPER;
@@ -40,6 +42,10 @@ public class JsonUtil {
   /** Converts an object to a JSON string (pretty printed). */
   public static String toJson(Object obj) throws JsonProcessingException {
     return MAPPER.writerWithDefaultPrettyPrinter().writeValueAsString(obj);
+  }
+
+  public static <T> T convertValue(Map<String, Object> data, Class<T> type) {
+    return MAPPER.convertValue(data, type);
   }
 
   /** Returns the shared ObjectMapper instance. */
