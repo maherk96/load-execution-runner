@@ -42,19 +42,43 @@ public class LoadHttpClientTaskProcessor implements InterruptibleTaskProcessor, 
             logger.info("Load test task {} finished. Termination reason: {}",
                     task.getTaskId(), runner.getTerminationReason());
 
+        } catch (InterruptedException e) {
+            // Handle cancellation gracefully - this is expected, not an error
+            logger.info("Load test execution cancelled for task: {}", task.getTaskId());
+            if (runner != null) {
+                runner.terminateTest("CANCELLED");
+            }
+            Thread.currentThread().interrupt(); // Restore interrupt status
+            throw e; // Re-throw so the queue service can handle it properly
+
         } catch (Exception e) {
-            logger.error("Load test execution for task {} failed or timed out: {}", task.getTaskId(), e.getMessage());
+            // Check if the exception is due to cancellation/interruption
+            if (Thread.currentThread().isInterrupted()) {
+                logger.info("Load test execution interrupted for task: {}", task.getTaskId());
+                if (runner != null) {
+                    runner.terminateTest("CANCELLED");
+                }
+                Thread.currentThread().interrupt();
+                throw new InterruptedException("Load test was interrupted");
+            }
+
+            // This is an actual error - handle null message safely
+            String errorMessage = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
+            logger.error("Load test execution failed for task: {} - Error: {}", task.getTaskId(), errorMessage, e);
+
             if (runner != null) {
                 runner.terminateTest("TIMEOUT_OR_FAILURE");
             }
             throw e;
+
         } finally {
-            // ADD THIS: Always cleanup, regardless of success or failure
+            // Always cleanup, regardless of success or failure
             if (runner != null) {
                 runner.cleanup();
             }
         }
     }
+
     @Override
     public void cancelTask(TaskDto task) {
         logger.info("Cancelling load test task: {}", task.getTaskId());

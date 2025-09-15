@@ -63,12 +63,12 @@ public class TaskHistoryService {
         activeTaskIds.remove(taskId);
         logger.error("FAILED task: {} after {}ms - Error: {}", taskId, processingTimeMs, safeErrorMessage);
     }
-    
+
     public void markCancelled(String taskId, long processingTimeMs, String reason) {
         LocalDateTime completedTime = LocalDateTime.now();
         updateTaskHistory(taskId, TaskStatus.CANCELLED, null, completedTime, processingTimeMs, reason);
         activeTaskIds.remove(taskId);
-        logger.warn("CANCELLED task: {} after {}ms - Reason: {}", taskId, processingTimeMs, reason);
+        logger.info("CANCELLED task: {} after {}ms - Reason: {}", taskId, processingTimeMs, reason);  // Changed WARN to INFO
     }
     
     public boolean isTaskActive(String taskId) {

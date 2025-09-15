@@ -15,6 +15,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -78,13 +79,16 @@ public class LoadTestExecutionRunner {
                 var testEndTime = Instant.now();
                 var totalDuration = Duration.between(testStartTime, testEndTime);
 
+                // FIX: Ensure termination reason is always set
+
+
                 phaseManager.completeTest();
                 log.info("Load test completed. Duration: {}s, Reason: {}",
                         totalDuration.getSeconds(), getTerminationReason());
 
             } catch (Exception e) {
                 log.error("Load test execution failed", e);
-                phaseManager.terminateTest("EXECUTION_ERROR: " + e.getMessage());
+                terminateTest("EXECUTION_ERROR: " + e.getMessage());
                 throw new RuntimeException("Load test execution failed", e);
             }
         }, resourceManager.getMainExecutor());
@@ -119,7 +123,15 @@ public class LoadTestExecutionRunner {
     }
 
     public String getTerminationReason() {
-        return terminationReason.get();
+        // Always check phase manager first since that's where strategies set the reason
+        String reason = phaseManager.getTerminationReason();
+        if (reason == null) {
+            reason = terminationReason.get();
+        }
+        if (reason == null) {
+            reason = "UNKNOWN";
+        }
+        return reason;
     }
 
     /**
@@ -144,7 +156,6 @@ public class LoadTestExecutionRunner {
  * Manages test phases and state transitions.
  */
 class TestPhaseManager {
-
     private static final Logger log = LoggerFactory.getLogger(TestPhaseManager.class);
 
     public enum TestPhase {
@@ -154,6 +165,7 @@ class TestPhaseManager {
     private final AtomicReference<TestPhase> currentPhase = new AtomicReference<>(TestPhase.INITIALIZING);
     private final AtomicBoolean testRunning = new AtomicBoolean(false);
     private final CountDownLatch testCompletionLatch = new CountDownLatch(1);
+    private final AtomicReference<String> terminationReason = new AtomicReference<>(); // ADD THIS
 
     public void startTest() {
         testRunning.set(true);
@@ -176,6 +188,7 @@ class TestPhaseManager {
     public void terminateTest(String reason) {
         if (testRunning.compareAndSet(true, false)) {
             currentPhase.set(TestPhase.TERMINATED);
+            terminationReason.set(reason); // STORE THE REASON
             testCompletionLatch.countDown();
             log.info("Test termination initiated: {}", reason);
         }
@@ -184,8 +197,14 @@ class TestPhaseManager {
     public void completeTest() {
         if (testRunning.compareAndSet(true, false)) {
             currentPhase.set(TestPhase.COMPLETED);
+            // Set a default reason if none was set
+            terminationReason.compareAndSet(null, "COMPLETED");
             testCompletionLatch.countDown();
         }
+    }
+
+    public String getTerminationReason() { // ADD THIS METHOD
+        return terminationReason.get();
     }
 
     public void waitForCompletion() {
@@ -200,7 +219,6 @@ class TestPhaseManager {
         testRunning.set(false);
     }
 }
-
 // ===== REQUEST EXECUTION =====
 
 /**
@@ -333,67 +351,271 @@ class RequestExecutor {
 /**
  * Manages executors, rate limiters, and other shared resources.
  */
+/**
+ * Enhanced Resource Manager with better configuration, monitoring, and graceful shutdown handling.
+ */
 class ResourceManager {
 
     private static final Logger log = LoggerFactory.getLogger(ResourceManager.class);
-    private static final int SCHEDULER_THREAD_MULTIPLIER = 2;
+
+    // Configuration constants
+    private static final int DEFAULT_SCHEDULER_THREADS = 4;
+    private static final int MIN_SCHEDULER_THREADS = 2;
+    private static final int MAX_SCHEDULER_THREADS = 16;
+    private static final int SHUTDOWN_TIMEOUT_SECONDS = 10;
+    private static final int FORCE_SHUTDOWN_TIMEOUT_SECONDS = 3;
 
     private final ExecutorService mainExecutor;
     private final ScheduledExecutorService schedulerService;
+    private final ResourceConfig config;
+    private final AtomicBoolean isShutdown = new AtomicBoolean(false);
+    private final AtomicInteger activeTaskCount = new AtomicInteger(0);
 
     public ResourceManager() {
-        this.mainExecutor = Executors.newVirtualThreadPerTaskExecutor();
+        this(ResourceConfig.defaultConfig());
+    }
+
+    public ResourceManager(ResourceConfig config) {
+        this.config = config;
+        this.mainExecutor = createMainExecutor();
         this.schedulerService = createSchedulerExecutor();
+
+        log.info("ResourceManager initialized - Main: {}, Scheduler threads: {}",
+                getExecutorInfo(mainExecutor), config.getSchedulerThreads());
+    }
+
+    private ExecutorService createMainExecutor() {
+        try {
+            return Executors.newVirtualThreadPerTaskExecutor();
+        } catch (Exception e) {
+            log.warn("Failed to create virtual thread executor, falling back to cached thread pool: {}", e.getMessage());
+            return Executors.newCachedThreadPool(this::createNamedThread);
+        }
     }
 
     private ScheduledExecutorService createSchedulerExecutor() {
-        int schedulerThreads = Math.max(3, Runtime.getRuntime().availableProcessors() / SCHEDULER_THREAD_MULTIPLIER);
-        return Executors.newScheduledThreadPool(schedulerThreads);
+        int threads = calculateSchedulerThreads();
+        return Executors.newScheduledThreadPool(threads, r -> createNamedThread(r, "LoadTest-Scheduler"));
+    }
+
+    private int calculateSchedulerThreads() {
+        int cpuThreads = Runtime.getRuntime().availableProcessors();
+        int calculated = Math.max(MIN_SCHEDULER_THREADS, cpuThreads / 2);
+        return Math.min(calculated, MAX_SCHEDULER_THREADS);
+    }
+
+    private Thread createNamedThread(Runnable r) {
+        return createNamedThread(r, "LoadTest-Worker");
+    }
+
+    private Thread createNamedThread(Runnable r, String prefix) {
+        Thread thread = new Thread(r, prefix + "-" + System.currentTimeMillis());
+        thread.setDaemon(false);
+        thread.setUncaughtExceptionHandler(this::handleUncaughtException);
+        return thread;
+    }
+
+    private void handleUncaughtException(Thread thread, Throwable exception) {
+        log.error("Uncaught exception in thread {}: {}", thread.getName(), exception.getMessage(), exception);
     }
 
     public ExecutorService getMainExecutor() {
+        checkNotShutdown();
         return mainExecutor;
     }
 
     public ScheduledExecutorService getSchedulerService() {
+        checkNotShutdown();
         return schedulerService;
     }
 
-    public void cleanup() {
-        shutdownExecutorService("Scheduler", schedulerService, 5);
-        shutdownExecutorService("Main Executor", mainExecutor, 10);
+    /**
+     * Submit a task and track it for graceful shutdown
+     */
+    public CompletableFuture<Void> submitTrackedTask(Runnable task) {
+        checkNotShutdown();
+        activeTaskCount.incrementAndGet();
+
+        return CompletableFuture.runAsync(() -> {
+            try {
+                task.run();
+            } finally {
+                activeTaskCount.decrementAndGet();
+            }
+        }, mainExecutor);
     }
 
-    private void shutdownExecutorService(String name, ExecutorService executor, int timeoutSeconds) {
+    /**
+     * Get current resource usage metrics
+     */
+    public ResourceMetrics getMetrics() {
+        return new ResourceMetrics(
+                getExecutorInfo(mainExecutor),
+                getExecutorInfo(schedulerService),
+                activeTaskCount.get(),
+                isShutdown.get()
+        );
+    }
+
+    private String getExecutorInfo(ExecutorService executor) {
+        if (executor instanceof ThreadPoolExecutor tpe) {
+            return String.format("ThreadPool[active=%d, pool=%d, queue=%d]",
+                    tpe.getActiveCount(), tpe.getPoolSize(), tpe.getQueue().size());
+        }
+        return executor.getClass().getSimpleName();
+    }
+
+    /**
+     * Enhanced cleanup with better cancellation handling
+     */
+    public void cleanup() {
+        if (!isShutdown.compareAndSet(false, true)) {
+            log.debug("ResourceManager already shut down");
+            return;
+        }
+
+        log.info("Starting ResourceManager cleanup...");
+
         try {
-            log.debug("Shutting down {} executor service...", name);
+            // Wait briefly for active tasks to complete naturally
+            waitForActiveTasksToComplete(Duration.ofSeconds(2));
+
+            // Shutdown executors gracefully
+            shutdownExecutorGracefully("Scheduler", schedulerService);
+            shutdownExecutorGracefully("Main Executor", mainExecutor);
+
+            log.info("ResourceManager cleanup completed successfully");
+
+        } catch (Exception e) {
+            log.error("Error during ResourceManager cleanup", e);
+        }
+    }
+
+    private void waitForActiveTasksToComplete(Duration timeout) {
+        if (activeTaskCount.get() == 0) return;
+
+        log.debug("Waiting up to {}s for {} active tasks to complete",
+                timeout.getSeconds(), activeTaskCount.get());
+
+        long endTime = System.currentTimeMillis() + timeout.toMillis();
+        while (activeTaskCount.get() > 0 && System.currentTimeMillis() < endTime) {
+            try {
+                Thread.sleep(100);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
+            }
+        }
+
+        if (activeTaskCount.get() > 0) {
+            log.debug("Still {} active tasks after timeout", activeTaskCount.get());
+        }
+    }
+
+    /**
+     * Improved shutdown logic that avoids WARN logs during normal cancellation
+     */
+    private void shutdownExecutorGracefully(String name, ExecutorService executor) {
+        if (executor.isShutdown()) {
+            log.debug("{} executor already shut down", name);
+            return;
+        }
+
+        try {
+            log.debug("Shutting down {} executor...", name);
             executor.shutdown();
 
-            if (!executor.awaitTermination(timeoutSeconds, TimeUnit.SECONDS)) {
-                log.warn("{} executor did not terminate within {} seconds, forcing shutdown", name, timeoutSeconds);
-                executor.shutdownNow();
-
-                if (!executor.awaitTermination(2, TimeUnit.SECONDS)) {
-                    log.warn("{} executor did not terminate even after forced shutdown", name);
-                }
-            } else {
-                log.debug("{} executor service shut down successfully", name);
+            // Wait for normal shutdown
+            if (executor.awaitTermination(SHUTDOWN_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
+                log.debug("{} executor shut down gracefully", name);
+                return;
             }
+
+            // Force shutdown if needed, but log appropriately for cancellation vs timeout
+            log.debug("{} executor did not terminate within {}s, initiating forced shutdown",
+                    name, SHUTDOWN_TIMEOUT_SECONDS);
+
+            executor.shutdownNow();
+
+            // Final wait for forced shutdown
+            if (executor.awaitTermination(FORCE_SHUTDOWN_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
+                log.debug("{} executor terminated after forced shutdown", name);
+            } else {
+                log.warn("{} executor did not terminate even after forced shutdown", name);
+            }
+
         } catch (InterruptedException e) {
-            log.warn("{} executor shutdown was interrupted, forcing immediate shutdown", name);
+            // This is expected during cancellation - don't log as WARNING
+            log.info("{} executor shutdown interrupted - performing immediate shutdown", name);
             Thread.currentThread().interrupt();
             executor.shutdownNow();
+
         } catch (Exception e) {
             log.error("Unexpected error shutting down {} executor", name, e);
-            try {
-                executor.shutdownNow();
-            } catch (Exception shutdownException) {
-                log.error("Failed to force shutdown {} executor", name, shutdownException);
-            }
+            forceShutdownSafely(executor, name);
+        }
+    }
+
+    private void forceShutdownSafely(ExecutorService executor, String name) {
+        try {
+            executor.shutdownNow();
+        } catch (Exception shutdownException) {
+            log.error("Failed to force shutdown {} executor", name, shutdownException);
+        }
+    }
+
+    private void checkNotShutdown() {
+        if (isShutdown.get()) {
+            throw new IllegalStateException("ResourceManager has been shut down");
+        }
+    }
+
+    /**
+     * Configuration for ResourceManager behavior
+     */
+    public static class ResourceConfig {
+        private final int schedulerThreads;
+        private final Duration shutdownTimeout;
+        private final boolean enableMetrics;
+
+        public ResourceConfig(int schedulerThreads, Duration shutdownTimeout, boolean enableMetrics) {
+            this.schedulerThreads = Math.max(MIN_SCHEDULER_THREADS,
+                    Math.min(schedulerThreads, MAX_SCHEDULER_THREADS));
+            this.shutdownTimeout = shutdownTimeout;
+            this.enableMetrics = enableMetrics;
+        }
+
+        public static ResourceConfig defaultConfig() {
+            return new ResourceConfig(DEFAULT_SCHEDULER_THREADS,
+                    Duration.ofSeconds(SHUTDOWN_TIMEOUT_SECONDS), true);
+        }
+
+        public static ResourceConfig customConfig(int schedulerThreads) {
+            return new ResourceConfig(schedulerThreads,
+                    Duration.ofSeconds(SHUTDOWN_TIMEOUT_SECONDS), true);
+        }
+
+        public int getSchedulerThreads() { return schedulerThreads; }
+        public Duration getShutdownTimeout() { return shutdownTimeout; }
+        public boolean isMetricsEnabled() { return enableMetrics; }
+    }
+
+    /**
+     * Resource usage metrics
+     */
+    public record ResourceMetrics(
+            String mainExecutorInfo,
+            String schedulerExecutorInfo,
+            int activeTaskCount,
+            boolean isShutdown
+    ) {
+        @Override
+        public String toString() {
+            return String.format("ResourceMetrics[main=%s, scheduler=%s, active=%d, shutdown=%b]",
+                    mainExecutorInfo, schedulerExecutorInfo, activeTaskCount, isShutdown);
         }
     }
 }
-
 // ===== WORKLOAD STRATEGIES =====
 
 /**
@@ -594,6 +816,7 @@ class ClosedWorkloadStrategy implements WorkloadStrategy {
         try {
             userCompletionLatch.await();
             if (phaseManager.isTestRunning() && !cancelled.get()) {
+                // FIX: Use terminateTest instead of completeTest to set reason properly
                 phaseManager.terminateTest("ALL_ITERATIONS_COMPLETED");
             }
         } catch (InterruptedException e) {
@@ -738,9 +961,11 @@ class OpenWorkloadStrategy implements WorkloadStrategy {
         waitForActiveRequestsToComplete(Duration.ofSeconds(30));
 
         if (phaseManager.isTestRunning() && !cancelled.get()) {
+            // FIX: Use terminateTest to ensure reason is propagated
             phaseManager.terminateTest("DURATION_COMPLETED");
         }
     }
+
 
     private void scheduleDurationTermination(Duration testDuration) {
         durationTask = resourceManager.getSchedulerService().schedule(() -> {
@@ -749,6 +974,7 @@ class OpenWorkloadStrategy implements WorkloadStrategy {
             }
         }, testDuration.toMillis(), TimeUnit.MILLISECONDS);
     }
+
 
     private void waitForActiveRequestsToComplete(Duration timeout) {
         var deadline = Instant.now().plus(timeout);

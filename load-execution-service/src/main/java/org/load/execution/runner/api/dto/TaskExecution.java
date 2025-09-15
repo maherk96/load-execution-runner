@@ -1,10 +1,12 @@
 package org.load.execution.runner.api.dto;
 
+import lombok.Data;
 import org.load.execution.runner.core.model.TaskStatus;
 import org.load.execution.runner.core.model.TaskType;
 
 import java.time.LocalDateTime;
 
+@Data
 public class TaskExecution {
     private final String taskId;
     private final TaskType taskType;

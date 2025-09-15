@@ -355,12 +355,14 @@ public class ImprovedTaskQueueService {
         String taskId = task.getTaskId();
         long startTime = System.currentTimeMillis();
         boolean taskStatusSet = false;
+        boolean wasCancelled = false;
 
         try {
             MDC.put("taskId", taskId);
 
             // Check for pre-processing cancellation
             if (wrapper.isCancelled()) {
+                wasCancelled = true;
                 logger.info("Task was cancelled before processing started");
                 long duration = System.currentTimeMillis() - startTime;
                 historyService.markCancelled(taskId, duration, "Task cancelled before processing");
@@ -390,6 +392,7 @@ public class ImprovedTaskQueueService {
 
             // Final cancellation check
             if (wrapper.isCancelled()) {
+                wasCancelled = true;
                 throw new InterruptedException("Task was cancelled during execution");
             }
 
@@ -403,21 +406,23 @@ public class ImprovedTaskQueueService {
             logger.info("COMPLETED task in {}ms - Total completed: {}", duration, completedTasks.get());
 
         } catch (InterruptedException e) {
+            wasCancelled = true;
             if (!taskStatusSet) {
                 long duration = System.currentTimeMillis() - startTime;
                 historyService.markCancelled(taskId, duration, "Task was cancelled");
                 failedTasks.incrementAndGet();
                 taskStatusSet = true;
-                logger.info("Task CANCELLED after {}ms", duration); // Changed from WARN to INFO
+                logger.info("Task CANCELLED after {}ms", duration); // Changed from ERROR/WARN to INFO
             }
 
         } catch (CancellationException e) {
+            wasCancelled = true;
             if (!taskStatusSet) {
                 long duration = System.currentTimeMillis() - startTime;
                 historyService.markCancelled(taskId, duration, "Task was cancelled");
                 failedTasks.incrementAndGet();
                 taskStatusSet = true;
-                logger.info("Task CANCELLED after {}ms (CancellationException)", duration); // Changed from WARN to INFO
+                logger.info("Task CANCELLED after {}ms", duration); // Changed from ERROR/WARN to INFO
             }
 
         } catch (TimeoutException e) {
@@ -443,16 +448,21 @@ public class ImprovedTaskQueueService {
                 historyService.markFailed(taskId, duration, errorMessage);
                 taskStatusSet = true;
                 logger.error("Task FAILED after {}ms - Error: {}", duration, errorMessage, e);
-            } else {
-                logger.debug("Ignoring cleanup exception - task status already set: {}",
-                        e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName());
             }
 
         } finally {
             currentTask.set(null);
             MDC.remove("taskId");
+
+            // Add a final summary log that's clear about the outcome
+            if (wasCancelled) {
+                logger.info("Task processing completed: CANCELLED - taskId: {}", taskId);
+            } else if (taskStatusSet) {
+                // Don't log here for success/failure as we already logged above
+            }
         }
     }
+
 
     /**
      * Execute task with periodic interrupt checks for better cancellation support
@@ -460,18 +470,19 @@ public class ImprovedTaskQueueService {
     private void executeTaskWithInterruptChecks(TaskDto task, TaskWrapper wrapper) throws Exception {
         // Check interruption before starting
         if (Thread.currentThread().isInterrupted() || wrapper.isCancelled()) {
+            logger.info("Task cancellation detected before execution");
             throw new InterruptedException("Task was cancelled");
         }
 
         try {
             processorManager.processTask(task);
         } catch (InterruptedException e) {
-            logger.info("Task processor properly handled interruption");
+            logger.info("Task processor was interrupted - handling cancellation gracefully");
             throw e;
         } catch (Exception e) {
             // Check if this was due to interruption
-            if (Thread.currentThread().isInterrupted()) {
-                logger.info("Task failed due to interruption");
+            if (Thread.currentThread().isInterrupted() || wrapper.isCancelled()) {
+                logger.info("Task failed due to cancellation");
                 throw new InterruptedException("Task was interrupted");
             }
             throw e;
@@ -479,10 +490,10 @@ public class ImprovedTaskQueueService {
 
         // Final check after processing
         if (Thread.currentThread().isInterrupted() || wrapper.isCancelled()) {
+            logger.info("Task cancellation detected after execution");
             throw new InterruptedException("Task was cancelled after processing");
         }
     }
-
     private void notifyProcessorOfCancellation(TaskDto task) {
         try {
             TaskProcessor processor = processorManager.getProcessor(task.getTaskType());
