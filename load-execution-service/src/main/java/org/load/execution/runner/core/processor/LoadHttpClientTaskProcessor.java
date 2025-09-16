@@ -200,12 +200,12 @@ public class LoadHttpClientTaskProcessor implements InterruptibleTaskProcessor, 
 
         try {
             if (loadModel.getDuration() != null) {
-                return parseDurationToSeconds(loadModel.getDuration()) + 10;
+                return parseDurationToSeconds(loadModel.getDuration()) + 60;
             }
 
             long rampUp = parseDurationToSeconds(loadModel.getRampUp());
             long holdFor = parseDurationToSeconds(loadModel.getHoldFor());
-            return rampUp + holdFor + 10;
+            return rampUp + holdFor + 60;
         } catch (Exception e) {
             logger.warn("Failed to parse durations, falling back to default timeout (120s)");
             return 120;

@@ -2,7 +2,7 @@ spring:
   application:
     name: load-execution-service
 server:
-  port: 8090
+  port: 8012
 
   task:
     queue:
