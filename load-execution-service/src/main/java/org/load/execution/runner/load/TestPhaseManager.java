@@ -6,6 +6,7 @@ import org.slf4j.LoggerFactory;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.EnumSet;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -17,21 +18,21 @@ import java.util.function.Consumer;
 /**
  * Enhanced test phase manager that provides robust lifecycle management with state validation,
  * metrics collection, and comprehensive error handling for load test execution.
- * 
+ *
  * <p>This manager enforces valid phase transitions using a state machine approach and provides
  * detailed observability into test execution progress. It supports graceful termination,
  * timeout handling, and progress monitoring.
- * 
+ *
  * <p><b>State Machine:</b>
  * <pre>
  * INITIALIZING → WARMUP → RAMP_UP → HOLD → COMPLETED
  *      ↓           ↓         ↓       ↓        ↓
  *   TERMINATED  TERMINATED TERMINATED TERMINATED TERMINATED
  * </pre>
- * 
+ *
  * <p><b>Thread Safety:</b> All operations are thread-safe and can be called concurrently
  * from multiple threads. State transitions are atomic and validated.
- * 
+ *
  * @author Load Test Team
  * @version 2.0.0
  */
@@ -42,53 +43,60 @@ public class TestPhaseManager {
      * Test execution phases with valid transition definitions.
      */
     public enum TestPhase {
-        TERMINATED(EnumSet.noneOf(TestPhase.class)),
-
-        COMPLETED(EnumSet.noneOf(TestPhase.class)),
-
-        HOLD(EnumSet.of(COMPLETED, TERMINATED)),
-
-        RAMP_UP(EnumSet.of(HOLD, TERMINATED)),
-
-        WARMUP(EnumSet.of(RAMP_UP, HOLD, TERMINATED)),
-
         /** Initial phase when test is being set up */
-        INITIALIZING(EnumSet.of(WARMUP, RAMP_UP, HOLD, TERMINATED));
+        INITIALIZING,
 
+        /** Optional warmup phase for system preparation */
+        WARMUP,
 
+        /** Gradual increase in load */
+        RAMP_UP,
 
-        private final Set<TestPhase> allowedTransitions;
+        /** Sustained load execution */
+        HOLD,
 
-        TestPhase(Set<TestPhase> allowedTransitions) {
-            this.allowedTransitions = allowedTransitions;
-        }
+        /** Successful test completion */
+        COMPLETED,
+
+        /** Test terminated before completion */
+        TERMINATED;
+
+        // Static map to avoid enum initialization issues
+        private static final Map<TestPhase, Set<TestPhase>> ALLOWED_TRANSITIONS = Map.of(
+                INITIALIZING, Set.of(WARMUP, RAMP_UP, HOLD, TERMINATED),
+                WARMUP, Set.of(RAMP_UP, HOLD, TERMINATED),
+                RAMP_UP, Set.of(HOLD, TERMINATED),
+                HOLD, Set.of(COMPLETED, TERMINATED),
+                COMPLETED, Set.of(),
+                TERMINATED, Set.of()
+        );
 
         /**
          * Checks if transition to target phase is valid.
-         * 
+         *
          * @param target the target phase
          * @return true if transition is allowed
          */
         public boolean canTransitionTo(TestPhase target) {
-            return allowedTransitions.contains(target);
+            return ALLOWED_TRANSITIONS.get(this).contains(target);
         }
 
         /**
          * Returns the set of allowed transition phases.
-         * 
+         *
          * @return immutable set of allowed next phases
          */
         public Set<TestPhase> getAllowedTransitions() {
-            return EnumSet.copyOf(allowedTransitions);
+            return ALLOWED_TRANSITIONS.get(this);
         }
 
         /**
          * Checks if this is a terminal phase (no further transitions allowed).
-         * 
+         *
          * @return true if this is a terminal phase
          */
         public boolean isTerminal() {
-            return allowedTransitions.isEmpty();
+            return ALLOWED_TRANSITIONS.get(this).isEmpty();
         }
     }
 
@@ -165,7 +173,7 @@ public class TestPhaseManager {
         private final Duration elapsedTime;
 
         public TestState(TestPhase currentPhase, boolean isRunning, String terminationReason,
-                        Instant startTime, Instant lastTransitionTime) {
+                         Instant startTime, Instant lastTransitionTime) {
             this.currentPhase = currentPhase;
             this.isRunning = isRunning;
             this.terminationReason = terminationReason;
@@ -198,7 +206,7 @@ public class TestPhaseManager {
     private final CountDownLatch testCompletionLatch = new CountDownLatch(1);
     private final AtomicReference<String> terminationReason = new AtomicReference<>();
     private final AtomicReference<PhaseTransitionListener> transitionListener = new AtomicReference<>();
-    
+
     // Timing and metrics
     private volatile Instant testStartTime;
     private volatile Instant lastTransitionTime;
@@ -217,7 +225,7 @@ public class TestPhaseManager {
 
     /**
      * Creates a new TestPhaseManager with specified configuration.
-     * 
+     *
      * @param config the configuration for phase management behavior
      */
     public TestPhaseManager(PhaseManagerConfig config) {
@@ -231,7 +239,7 @@ public class TestPhaseManager {
 
     /**
      * Starts the test execution and initializes timing.
-     * 
+     *
      * @throws IllegalStateException if test is already running
      */
     public void startTest() {
@@ -246,7 +254,7 @@ public class TestPhaseManager {
 
     /**
      * Attempts to transition to the specified phase with validation.
-     * 
+     *
      * @param targetPhase the phase to transition to
      * @throws InvalidPhaseTransitionException if transition is not allowed
      * @throws IllegalStateException if test is not running
@@ -257,7 +265,7 @@ public class TestPhaseManager {
         }
 
         TestPhase current = currentPhase.get();
-        
+
         // Validate transition
         if (config.isStrictTransitions() && !current.canTransitionTo(targetPhase)) {
             String message = String.format("Invalid phase transition from %s to %s. Allowed transitions: %s",
@@ -270,7 +278,7 @@ public class TestPhaseManager {
 
     /**
      * Terminates the test with the specified reason.
-     * 
+     *
      * @param reason the termination reason
      */
     public void terminateTest(String reason) {
@@ -279,7 +287,7 @@ public class TestPhaseManager {
 
     /**
      * Terminates the test with the specified reason and optional error.
-     * 
+     *
      * @param reason the termination reason
      * @param error optional error that caused termination
      */
@@ -288,11 +296,11 @@ public class TestPhaseManager {
             if (error != null) {
                 lastError.set(error);
             }
-            
+
             setPhaseInternal(TestPhase.TERMINATED, reason);
             terminationReason.set(reason);
             testCompletionLatch.countDown();
-            
+
             log.info("Test termination initiated: {}", reason);
             if (error != null) {
                 log.debug("Termination error details", error);
@@ -320,7 +328,7 @@ public class TestPhaseManager {
 
     /**
      * Returns the current test phase.
-     * 
+     *
      * @return current phase
      */
     public TestPhase getCurrentPhase() {
@@ -329,7 +337,7 @@ public class TestPhaseManager {
 
     /**
      * Checks if the test is currently running.
-     * 
+     *
      * @return true if test is running
      */
     public boolean isTestRunning() {
@@ -338,7 +346,7 @@ public class TestPhaseManager {
 
     /**
      * Returns the termination reason if test has terminated.
-     * 
+     *
      * @return termination reason or null if not terminated
      */
     public String getTerminationReason() {
@@ -347,7 +355,7 @@ public class TestPhaseManager {
 
     /**
      * Returns a complete snapshot of the current test state.
-     * 
+     *
      * @return immutable test state snapshot
      */
     public TestState getTestState() {
@@ -362,7 +370,7 @@ public class TestPhaseManager {
 
     /**
      * Returns the last error that occurred during test execution.
-     * 
+     *
      * @return last error or null if no error occurred
      */
     public Exception getLastError() {
@@ -375,7 +383,7 @@ public class TestPhaseManager {
 
     /**
      * Waits for test completion indefinitely.
-     * 
+     *
      * @throws InterruptedException if interrupted while waiting
      */
     public void waitForCompletion() throws InterruptedException {
@@ -384,7 +392,7 @@ public class TestPhaseManager {
 
     /**
      * Waits for test completion with timeout.
-     * 
+     *
      * @param timeout maximum time to wait
      * @param unit time unit
      * @return true if test completed within timeout
@@ -396,7 +404,7 @@ public class TestPhaseManager {
 
     /**
      * Waits for test completion with configured maximum timeout.
-     * 
+     *
      * @throws InterruptedException if interrupted while waiting
      * @throws TimeoutException if timeout is exceeded
      */
@@ -412,7 +420,7 @@ public class TestPhaseManager {
 
     /**
      * Sets a listener for phase transition events.
-     * 
+     *
      * @param listener the transition listener
      */
     public void setTransitionListener(PhaseTransitionListener listener) {
@@ -439,11 +447,11 @@ public class TestPhaseManager {
             log.warn("Cleanup called while test is still running - forcing termination");
             terminateTest("CLEANUP_FORCED");
         }
-        
+
         // Clear any references to help GC
         transitionListener.set(null);
         lastError.set(null);
-        
+
         log.debug("TestPhaseManager cleanup completed");
     }
 
@@ -457,7 +465,7 @@ public class TestPhaseManager {
     private void setPhaseInternal(TestPhase newPhase, String logMessage) {
         TestPhase previousPhase = currentPhase.getAndSet(newPhase);
         lastTransitionTime = Instant.now();
-        
+
         // Notify listener if present
         PhaseTransitionListener listener = transitionListener.get();
         if (listener != null) {
@@ -467,9 +475,9 @@ public class TestPhaseManager {
                 log.warn("Error in phase transition listener", e);
             }
         }
-        
+
         log.debug("{}", logMessage);
-        
+
         // Log metrics if enabled
         if (config.isMetricsEnabled()) {
             logPhaseMetrics(previousPhase, newPhase);
@@ -482,7 +490,7 @@ public class TestPhaseManager {
     private void logPhaseMetrics(TestPhase from, TestPhase to) {
         if (testStartTime != null) {
             Duration totalElapsed = Duration.between(testStartTime, lastTransitionTime);
-            log.info("Phase transition metrics: {} → {} (total elapsed: {}s)", 
+            log.info("Phase transition metrics: {} → {} (total elapsed: {}s)",
                     from, to, totalElapsed.getSeconds());
         }
     }
@@ -519,7 +527,7 @@ public class TestPhaseManager {
 
     /**
      * Checks if the current phase allows the test to continue processing.
-     * 
+     *
      * @return true if test should continue processing
      */
     public boolean shouldContinueProcessing() {
@@ -529,12 +537,12 @@ public class TestPhaseManager {
 
     /**
      * Returns the duration the test has been in the current phase.
-     * 
+     *
      * @return duration in current phase
      */
     public Duration getTimeInCurrentPhase() {
-        return lastTransitionTime != null ? 
-                Duration.between(lastTransitionTime, Instant.now()) : 
+        return lastTransitionTime != null ?
+                Duration.between(lastTransitionTime, Instant.now()) :
                 Duration.ZERO;
     }
 }

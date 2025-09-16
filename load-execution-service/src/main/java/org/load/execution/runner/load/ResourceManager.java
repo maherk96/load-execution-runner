@@ -18,7 +18,7 @@ import java.util.function.Supplier;
 /**
  * Enhanced resource manager that provides robust thread pool management, monitoring,
  * and protection against resource exhaustion for load testing operations.
- * 
+ *
  * <p>This manager provides comprehensive resource lifecycle management including:
  * <ul>
  *   <li><b>Smart Thread Pool Management:</b> Automatic sizing with fallback strategies</li>
@@ -27,13 +27,13 @@ import java.util.function.Supplier;
  *   <li><b>Graceful Degradation:</b> Fallback mechanisms for resource exhaustion</li>
  *   <li><b>Comprehensive Cleanup:</b> Multi-stage shutdown with timeout handling</li>
  * </ul>
- * 
+ *
  * <p><b>Thread Safety:</b> All operations are thread-safe and designed for concurrent access.
  * The manager uses atomic operations and concurrent collections to ensure consistency.
- * 
+ *
  * <p><b>Resource Limits:</b> Built-in protection against resource exhaustion with configurable
  * limits and automatic throttling when approaching capacity limits.
- * 
+ *
  * @author Load Test Team
  * @version 2.0.0
  */
@@ -173,9 +173,9 @@ public class ResourceManager implements AutoCloseable {
         private final Instant lastUpdated;
 
         public ResourceMetrics(String mainExecutorInfo, String schedulerExecutorInfo,
-                             int activeTaskCount, int completedTaskCount, int rejectedTaskCount,
-                             boolean isShutdown, boolean isHealthy, Duration uptime,
-                             double taskSubmissionRate, double taskCompletionRate) {
+                               int activeTaskCount, int completedTaskCount, int rejectedTaskCount,
+                               boolean isShutdown, boolean isHealthy, Duration uptime,
+                               double taskSubmissionRate, double taskCompletionRate) {
             this.mainExecutorInfo = mainExecutorInfo;
             this.schedulerExecutorInfo = schedulerExecutorInfo;
             this.activeTaskCount = activeTaskCount;
@@ -205,7 +205,7 @@ public class ResourceManager implements AutoCloseable {
         @Override
         public String toString() {
             return String.format("ResourceMetrics[main=%s, scheduler=%s, active=%d, completed=%d, " +
-                                "rejected=%d, healthy=%s, uptime=%ds, submissionRate=%.2f/s, completionRate=%.2f/s]",
+                            "rejected=%d, healthy=%s, uptime=%ds, submissionRate=%.2f/s, completionRate=%.2f/s]",
                     mainExecutorInfo, schedulerExecutorInfo, activeTaskCount, completedTaskCount,
                     rejectedTaskCount, isHealthy, uptime.getSeconds(), taskSubmissionRate, taskCompletionRate);
         }
@@ -284,7 +284,7 @@ public class ResourceManager implements AutoCloseable {
 
     /**
      * Creates a ResourceManager with custom configuration.
-     * 
+     *
      * @param config the configuration for resource management
      */
     public ResourceManager(ResourceConfig config) {
@@ -363,7 +363,7 @@ public class ResourceManager implements AutoCloseable {
     }
 
     private String generateThreadName(String prefix) {
-        return String.format("%s-%d-%d", prefix, System.currentTimeMillis() % 10000, 
+        return String.format("%s-%d-%d", prefix, System.currentTimeMillis() % 10000,
                 Thread.currentThread().getId() % 1000);
     }
 
@@ -373,7 +373,7 @@ public class ResourceManager implements AutoCloseable {
 
     /**
      * Returns the main executor service for task execution.
-     * 
+     *
      * @return main executor service
      * @throws IllegalStateException if resource manager is shut down
      */
@@ -384,7 +384,7 @@ public class ResourceManager implements AutoCloseable {
 
     /**
      * Returns the scheduler service for timed operations.
-     * 
+     *
      * @return scheduler service
      * @throws IllegalStateException if resource manager is shut down
      */
@@ -395,7 +395,7 @@ public class ResourceManager implements AutoCloseable {
 
     /**
      * Submits a task with tracking and circuit breaker protection.
-     * 
+     *
      * @param task the task to execute
      * @return future representing the task execution
      * @throws ResourceExhaustedException if circuit breaker is open
@@ -407,7 +407,7 @@ public class ResourceManager implements AutoCloseable {
 
     /**
      * Submits a named task with tracking and circuit breaker protection.
-     * 
+     *
      * @param task the task to execute
      * @param taskName name for logging and monitoring
      * @return future representing the task execution
@@ -452,7 +452,7 @@ public class ResourceManager implements AutoCloseable {
 
     /**
      * Submits a supplier task with result tracking.
-     * 
+     *
      * @param task the supplier task to execute
      * @param taskName name for logging and monitoring
      * @param <T> result type
@@ -493,7 +493,7 @@ public class ResourceManager implements AutoCloseable {
 
     /**
      * Returns comprehensive resource usage metrics.
-     * 
+     *
      * @return current resource metrics
      */
     public ResourceMetrics getMetrics() {
@@ -520,7 +520,7 @@ public class ResourceManager implements AutoCloseable {
 
     /**
      * Returns current health status.
-     * 
+     *
      * @return health status snapshot
      */
     public HealthStatus getHealthStatus() {
@@ -530,7 +530,7 @@ public class ResourceManager implements AutoCloseable {
 
     /**
      * Performs an immediate health check.
-     * 
+     *
      * @return current health status after check
      */
     public HealthStatus performHealthCheck() {
@@ -693,8 +693,13 @@ public class ResourceManager implements AutoCloseable {
         for (AutoCloseable resource : managedResources) {
             try {
                 resource.close();
+            } catch (InterruptedException e) {
+                // This is expected during cancellation - don't log as warning
+                log.debug("Resource cleanup interrupted during cancellation (normal behavior)");
+                Thread.currentThread().interrupt(); // Restore interrupt status
             } catch (Exception e) {
-                log.warn("Error closing managed resource: {}", e.getMessage());
+                String errorMsg = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
+                log.warn("Error closing managed resource: {}", errorMsg);
             }
         }
         managedResources.clear();

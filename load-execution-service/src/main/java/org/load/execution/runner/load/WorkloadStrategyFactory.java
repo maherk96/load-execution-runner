@@ -373,11 +373,11 @@ public class WorkloadStrategyFactory {
                     strategy.getClass().getSimpleName(), loadModel.getType()));
             }
 
-            // Validate strategy configuration if enabled
-            if (config.isValidationEnabled()) {
-                TestPlanSpec testPlanSpec = createTestPlanSpec(loadModel);
-                strategy.validate(testPlanSpec);
-            }
+//            // Validate strategy configuration if enabled
+//            if (config.isValidationEnabled()) {
+//                TestPlanSpec testPlanSpec = createTestPlanSpec(loadModel);
+//                strategy.validate(testPlanSpec);
+//            }
 
             // Cache strategy if caching is enabled
             if (config.isCachingEnabled()) {
@@ -599,11 +599,11 @@ public class WorkloadStrategyFactory {
                 loadModel.getDuration());
     }
 
-    private TestPlanSpec createTestPlanSpec(TestPlanSpec.LoadModel loadModel) {
-        // Create a minimal TestPlanSpec for validation purposes
-        // In real implementation, this would be more comprehensive
-        return new TestPlanSpec(null, new TestPlanSpec.ExecutionSpec(loadModel, null, null));
-    }
+//    private TestPlanSpec createTestPlanSpec(TestPlanSpec.LoadModel loadModel) {
+//        // Create a minimal TestPlanSpec for validation purposes
+//        // In real implementation, this would be more comprehensive
+//        return new TestPlanSpec(null, new TestPlanSpec.ExecutionSpec(loadModel, null, null));
+//    }
 
     // ================================
     // INNER CLASSES

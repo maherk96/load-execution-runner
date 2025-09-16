@@ -17,7 +17,7 @@ import java.util.function.Predicate;
 /**
  * Enhanced request executor that provides robust HTTP request execution with comprehensive
  * error handling, metrics collection, retry logic, and observability for load testing.
- * 
+ *
  * <p>This executor provides enterprise-grade request execution capabilities including:
  * <ul>
  *   <li><b>Resilience Patterns:</b> Circuit breaker, retry logic, timeout handling</li>
@@ -27,10 +27,10 @@ import java.util.function.Predicate;
  *   <li><b>Rate Limiting:</b> Protection against overwhelming target systems</li>
  *   <li><b>Structured Logging:</b> Rich observability with contextual information</li>
  * </ul>
- * 
+ *
  * <p><b>Thread Safety:</b> All operations are thread-safe and designed for high-concurrency
  * load testing scenarios with minimal contention.
- * 
+ *
  * @author Load Test Team
  * @version 2.0.0
  */
@@ -181,10 +181,10 @@ public class RequestExecutor {
         private final Instant lastUpdated;
 
         public RequestMetrics(long totalRequests, long successfulRequests, long failedRequests,
-                            long retriedRequests, long circuitBreakerTrips, double averageResponseTime,
-                            long p50ResponseTime, long p95ResponseTime, long p99ResponseTime,
-                            double requestsPerSecond, Map<Integer, Long> statusCodeDistribution,
-                            Map<String, Long> errorTypeDistribution, int activeRequests) {
+                              long retriedRequests, long circuitBreakerTrips, double averageResponseTime,
+                              long p50ResponseTime, long p95ResponseTime, long p99ResponseTime,
+                              double requestsPerSecond, Map<Integer, Long> statusCodeDistribution,
+                              Map<String, Long> errorTypeDistribution, int activeRequests) {
             this.totalRequests = totalRequests;
             this.successfulRequests = successfulRequests;
             this.failedRequests = failedRequests;
@@ -216,7 +216,7 @@ public class RequestExecutor {
         public Map<String, Long> getErrorTypeDistribution() { return errorTypeDistribution; }
         public int getActiveRequests() { return activeRequests; }
         public Instant getLastUpdated() { return lastUpdated; }
-        
+
         public double getSuccessRate() {
             return totalRequests > 0 ? (double) successfulRequests / totalRequests : 0.0;
         }
@@ -224,7 +224,7 @@ public class RequestExecutor {
         @Override
         public String toString() {
             return String.format("RequestMetrics[total=%d, success=%d, failed=%d, successRate=%.2f%%, " +
-                                "avgResponseTime=%.2fms, p95=%.2fms, rps=%.2f, active=%d]",
+                            "avgResponseTime=%.2fms, p95=%.2fms, rps=%.2f, active=%d]",
                     totalRequests, successfulRequests, failedRequests, getSuccessRate() * 100,
                     averageResponseTime, (double) p95ResponseTime, requestsPerSecond, activeRequests);
         }
@@ -251,9 +251,9 @@ public class RequestExecutor {
         private final String traceId;
 
         public RequestExecutionLog(Instant timestamp, String phase, int userId, String method,
-                                 String path, long durationMs, boolean backPressured, boolean success,
-                                 int statusCode, String errorType, int retryCount, boolean fromCache,
-                                 long requestSizeBytes, long responseSizeBytes, String traceId) {
+                                   String path, long durationMs, boolean backPressured, boolean success,
+                                   int statusCode, String errorType, int retryCount, boolean fromCache,
+                                   long requestSizeBytes, long responseSizeBytes, String traceId) {
             this.timestamp = timestamp;
             this.phase = phase;
             this.userId = userId;
@@ -326,7 +326,7 @@ public class RequestExecutor {
         this.config = config != null ? config : RequestExecutorConfig.defaultConfig();
         this.httpClient = createHttpClient(testPlanSpec);
         this.metricsCollector = new RequestMetricsCollector(this.config);
-        this.circuitBreaker = this.config.isCircuitBreakerEnabled() ? 
+        this.circuitBreaker = this.config.isCircuitBreakerEnabled() ?
                 new CircuitBreaker(this.config.getCircuitBreakerThreshold(), this.config.getCircuitBreakerTimeout()) : null;
         this.concurrencyLimiter = new Semaphore(this.config.getMaxConcurrentRequests());
         this.requestValidator = new RequestValidator(this.config);
@@ -351,53 +351,54 @@ public class RequestExecutor {
 
     /**
      * Executes all requests across all scenarios with enhanced error handling and metrics.
+     * This method maintains backward compatibility while using the enhanced features.
      */
-    public CompletableFuture<Void> executeAllRequests(TestPlanSpec testPlanSpec, TestPhaseManager phaseManager,
-                                                     int userId, boolean isWarmup, Semaphore externalLimiter,
-                                                     AtomicBoolean cancelled) {
-        return executeAllRequestsAsync(testPlanSpec, phaseManager, userId, isWarmup, externalLimiter, cancelled);
+    public void executeAllRequests(TestPlanSpec testPlanSpec, TestPhaseManager phaseManager,
+                                   int userId, boolean isWarmup, Semaphore externalLimiter,
+                                   AtomicBoolean cancelled) {
+        if (isShutdown.get()) {
+            throw new IllegalStateException("RequestExecutor is shut down");
+        }
+
+        String traceId = generateTraceId();
+        ExecutionContext context = new ExecutionContext(userId, isWarmup, traceId, phaseManager.getCurrentPhase().name());
+
+        try {
+            activeRequests.incrementAndGet();
+
+            for (var scenario : testPlanSpec.getTestSpec().getScenarios()) {
+                if (!phaseManager.isTestRunning() || cancelled.get()) break;
+
+                for (var request : scenario.getRequests()) {
+                    if (!phaseManager.isTestRunning() || cancelled.get()) break;
+
+                    executeRequestWithResilience(request, context, phaseManager);
+                }
+            }
+        } finally {
+            activeRequests.decrementAndGet();
+            if (externalLimiter != null) {
+                externalLimiter.release();
+            }
+        }
     }
 
     /**
      * Asynchronous version of executeAllRequests for better concurrency.
      */
     public CompletableFuture<Void> executeAllRequestsAsync(TestPlanSpec testPlanSpec, TestPhaseManager phaseManager,
-                                                          int userId, boolean isWarmup, Semaphore externalLimiter,
-                                                          AtomicBoolean cancelled) {
-        if (isShutdown.get()) {
-            return CompletableFuture.failedFuture(new IllegalStateException("RequestExecutor is shut down"));
-        }
-
+                                                           int userId, boolean isWarmup, Semaphore externalLimiter,
+                                                           AtomicBoolean cancelled) {
         return CompletableFuture.runAsync(() -> {
-            String traceId = generateTraceId();
-            ExecutionContext context = new ExecutionContext(userId, isWarmup, traceId, phaseManager.getCurrentPhase().name());
-
-            try {
-                activeRequests.incrementAndGet();
-
-                for (var scenario : testPlanSpec.getTestSpec().getScenarios()) {
-                    if (!phaseManager.isTestRunning() || cancelled.get()) break;
-
-                    for (var request : scenario.getRequests()) {
-                        if (!phaseManager.isTestRunning() || cancelled.get()) break;
-                        
-                        executeRequestWithResilience(request, context, phaseManager);
-                    }
-                }
-            } finally {
-                activeRequests.decrementAndGet();
-                if (externalLimiter != null) {
-                    externalLimiter.release();
-                }
-            }
+            executeAllRequests(testPlanSpec, phaseManager, userId, isWarmup, externalLimiter, cancelled);
         });
     }
 
     /**
      * Executes a single request with comprehensive resilience patterns.
      */
-    public CompletableFuture<RequestExecutionResult> executeRequest(TestPlanSpec.Request request, 
-                                                                   ExecutionContext context) {
+    public CompletableFuture<RequestExecutionResult> executeRequest(TestPlanSpec.Request request,
+                                                                    ExecutionContext context) {
         if (isShutdown.get()) {
             return CompletableFuture.failedFuture(new IllegalStateException("RequestExecutor is shut down"));
         }
@@ -417,16 +418,16 @@ public class RequestExecutor {
      */
     public void logBackPressureEvent(String phase) {
         log.debug("Back-pressure: max concurrent requests reached in phase {}", phase);
-        
+
         RequestExecutionLog backPressureLog = new RequestExecutionLog(
                 Instant.now(), phase, -1, "N/A", "N/A", 0, true, false, 0,
                 "BACK_PRESSURE", 0, false, 0, 0, "back-pressure-" + System.nanoTime()
         );
 
         if (config.isStructuredLoggingEnabled()) {
-            log.info("Request execution: {}", backPressureLog);
+            log.debug("Request execution: {}", backPressureLog);
         }
-        
+
         metricsCollector.recordBackPressure();
     }
 
@@ -473,9 +474,9 @@ public class RequestExecutor {
     // PRIVATE IMPLEMENTATION
     // ================================
 
-    private RequestExecutionResult executeRequestWithResilience(TestPlanSpec.Request request, 
-                                                               ExecutionContext context,
-                                                               TestPhaseManager phaseManager) {
+    private RequestExecutionResult executeRequestWithResilience(TestPlanSpec.Request request,
+                                                                ExecutionContext context,
+                                                                TestPhaseManager phaseManager) {
         String traceId = context.getTraceId();
         int retryCount = 0;
         Exception lastException = null;
@@ -508,7 +509,7 @@ public class RequestExecutor {
             while (retryCount <= config.getMaxRetries()) {
                 try {
                     RequestExecutionResult result = executeRequestInternal(request, context, retryCount);
-                    
+
                     if (result.isSuccess() || !shouldRetry(result, retryCount)) {
                         if (circuitBreaker != null) {
                             if (result.isSuccess()) {
@@ -552,9 +553,9 @@ public class RequestExecutor {
         }
     }
 
-    private RequestExecutionResult executeRequestInternal(TestPlanSpec.Request request, 
-                                                         ExecutionContext context, 
-                                                         int retryCount) {
+    private RequestExecutionResult executeRequestInternal(TestPlanSpec.Request request,
+                                                          ExecutionContext context,
+                                                          int retryCount) {
         Instant startTime = Instant.now();
         boolean success = false;
         int statusCode = 0;
@@ -562,6 +563,9 @@ public class RequestExecutor {
         Exception exception = null;
         long requestSize = 0;
         long responseSize = 0;
+
+        // Count the request attempt BEFORE execution
+        metricsCollector.recordRequest(0, false, 0, "ATTEMPTING");
 
         try {
             // Estimate request size (simplified)
@@ -580,8 +584,8 @@ public class RequestExecutor {
                 errorType = categorizeHttpError(statusCode);
             }
 
-            // Record metrics
-            metricsCollector.recordRequest(durationMs, success, statusCode, errorType);
+            // Update metrics with actual results (this replaces the ATTEMPTING count)
+            metricsCollector.updateRequestResult(durationMs, success, statusCode, errorType);
 
             // Create execution log
             RequestExecutionLog executionLog = new RequestExecutionLog(
@@ -598,12 +602,12 @@ public class RequestExecutor {
         } catch (Exception e) {
             Instant endTime = Instant.now();
             long durationMs = Duration.between(startTime, endTime).toMillis();
-            
+
             exception = e;
             errorType = categorizeException(e);
-            
-            // Record metrics for failed request
-            metricsCollector.recordRequest(durationMs, false, 0, errorType);
+
+            // Update metrics for failed request (this replaces the ATTEMPTING count)
+            metricsCollector.updateRequestResult(durationMs, false, 0, errorType);
 
             // Create execution log for failed request
             RequestExecutionLog executionLog = new RequestExecutionLog(
@@ -621,7 +625,7 @@ public class RequestExecutor {
     private void logRequestExecution(RequestExecutionLog executionLog, boolean isWarmup) {
         if (config.isStructuredLoggingEnabled()) {
             if (!isWarmup) {
-                log.info("Request execution: {}", executionLog);
+                log.debug("Request execution: {}", executionLog);
             } else {
                 log.debug("Warmup request execution: {}", executionLog);
             }
@@ -657,9 +661,9 @@ public class RequestExecutor {
 
         // Add specific exception types that should be retried
         return e instanceof TimeoutException ||
-               e instanceof ConnectException ||
-               e.getMessage().contains("timeout") ||
-               e.getMessage().contains("connection");
+                e instanceof ConnectException ||
+                e.getMessage().contains("timeout") ||
+                e.getMessage().contains("connection");
     }
 
     private String categorizeHttpError(int statusCode) {
@@ -692,13 +696,13 @@ public class RequestExecutor {
     }
 
     private String generateTraceId() {
-        return String.format("req-%d-%d", System.currentTimeMillis(), 
+        return String.format("req-%d-%d", System.currentTimeMillis(),
                 Thread.currentThread().getId());
     }
 
     private void waitForActiveRequestsToComplete(Duration timeout) {
         Instant deadline = Instant.now().plus(timeout);
-        
+
         while (activeRequests.get() > 0 && Instant.now().isBefore(deadline)) {
             try {
                 Thread.sleep(100);
@@ -714,19 +718,19 @@ public class RequestExecutor {
     }
 
     // Helper methods for different failure scenarios
-    private RequestExecutionResult handleValidationFailure(TestPlanSpec.Request request, 
-                                                          ExecutionContext context, 
-                                                          RequestValidationException e) {
+    private RequestExecutionResult handleValidationFailure(TestPlanSpec.Request request,
+                                                           ExecutionContext context,
+                                                           RequestValidationException e) {
         RequestExecutionLog log = new RequestExecutionLog(
-                Instant.now(), context.getPhase(), context.getUserId(), 
+                Instant.now(), context.getPhase(), context.getUserId(),
                 request.getMethod().name(), request.getPath(), 0, false, false, 0,
                 "VALIDATION_ERROR", 0, false, 0, 0, context.getTraceId()
         );
         return new RequestExecutionResult(false, 0, 0, "VALIDATION_ERROR", e, log);
     }
 
-    private RequestExecutionResult handleCircuitBreakerOpen(TestPlanSpec.Request request, 
-                                                           ExecutionContext context) {
+    private RequestExecutionResult handleCircuitBreakerOpen(TestPlanSpec.Request request,
+                                                            ExecutionContext context) {
         RequestExecutionLog log = new RequestExecutionLog(
                 Instant.now(), context.getPhase(), context.getUserId(),
                 request.getMethod().name(), request.getPath(), 0, false, false, 0,
@@ -735,8 +739,8 @@ public class RequestExecutor {
         return new RequestExecutionResult(false, 0, 0, "CIRCUIT_BREAKER_OPEN", null, log);
     }
 
-    private RequestExecutionResult handleConcurrencyLimitExceeded(TestPlanSpec.Request request, 
-                                                                 ExecutionContext context) {
+    private RequestExecutionResult handleConcurrencyLimitExceeded(TestPlanSpec.Request request,
+                                                                  ExecutionContext context) {
         RequestExecutionLog log = new RequestExecutionLog(
                 Instant.now(), context.getPhase(), context.getUserId(),
                 request.getMethod().name(), request.getPath(), 0, true, false, 0,
@@ -745,9 +749,9 @@ public class RequestExecutor {
         return new RequestExecutionResult(false, 0, 0, "CONCURRENCY_LIMIT", null, log);
     }
 
-    private RequestExecutionResult handleInterruption(TestPlanSpec.Request request, 
-                                                     ExecutionContext context, 
-                                                     InterruptedException e) {
+    private RequestExecutionResult handleInterruption(TestPlanSpec.Request request,
+                                                      ExecutionContext context,
+                                                      InterruptedException e) {
         RequestExecutionLog log = new RequestExecutionLog(
                 Instant.now(), context.getPhase(), context.getUserId(),
                 request.getMethod().name(), request.getPath(), 0, false, false, 0,
@@ -756,10 +760,10 @@ public class RequestExecutor {
         return new RequestExecutionResult(false, 0, 0, "INTERRUPTED", e, log);
     }
 
-    private RequestExecutionResult handleRetriesExhausted(TestPlanSpec.Request request, 
-                                                         ExecutionContext context, 
-                                                         int retryCount, 
-                                                         Exception lastException) {
+    private RequestExecutionResult handleRetriesExhausted(TestPlanSpec.Request request,
+                                                          ExecutionContext context,
+                                                          int retryCount,
+                                                          Exception lastException) {
         RequestExecutionLog log = new RequestExecutionLog(
                 Instant.now(), context.getPhase(), context.getUserId(),
                 request.getMethod().name(), request.getPath(), 0, false, false, 0,
@@ -805,8 +809,8 @@ public class RequestExecutor {
         private final Exception exception;
         private final RequestExecutionLog executionLog;
 
-        public RequestExecutionResult(boolean success, long durationMs, int statusCode, 
-                                    String errorType, Exception exception, RequestExecutionLog executionLog) {
+        public RequestExecutionResult(boolean success, long durationMs, int statusCode,
+                                      String errorType, Exception exception, RequestExecutionLog executionLog) {
             this.success = success;
             this.durationMs = durationMs;
             this.statusCode = statusCode;
@@ -838,6 +842,25 @@ public class RequestExecutor {
         }
 
         void recordRequest(long durationMs, boolean success, int statusCode, String errorType) {
+            // Only count actual request executions, not attempts
+            if (!"ATTEMPTING".equals(errorType)) {
+                totalRequests.incrementAndGet();
+                if (success) {
+                    successfulRequests.incrementAndGet();
+                } else {
+                    failedRequests.incrementAndGet();
+                }
+                responseTimes.offer(durationMs);
+
+                // Keep only recent response times (simple implementation)
+                while (responseTimes.size() > 1000) {
+                    responseTimes.poll();
+                }
+            }
+        }
+
+        void updateRequestResult(long durationMs, boolean success, int statusCode, String errorType) {
+            // This replaces the ATTEMPTING entry with actual results
             totalRequests.incrementAndGet();
             if (success) {
                 successfulRequests.incrementAndGet();
@@ -845,7 +868,7 @@ public class RequestExecutor {
                 failedRequests.incrementAndGet();
             }
             responseTimes.offer(durationMs);
-            
+
             // Keep only recent response times (simple implementation)
             while (responseTimes.size() > 1000) {
                 responseTimes.poll();
@@ -867,16 +890,16 @@ public class RequestExecutor {
         RequestMetrics getMetrics(int activeRequests) {
             List<Long> times = new ArrayList<>(responseTimes);
             Collections.sort(times);
-            
+
             long p50 = percentile(times, 50);
             long p95 = percentile(times, 95);
             long p99 = percentile(times, 99);
             double avg = times.stream().mapToLong(Long::longValue).average().orElse(0.0);
-            
+
             return new RequestMetrics(
-                totalRequests.get(), successfulRequests.get(), failedRequests.get(),
-                retriedRequests.get(), circuitBreakerTrips.get(), avg, p50, p95, p99,
-                0.0, Map.of(), Map.of(), activeRequests
+                    totalRequests.get(), successfulRequests.get(), failedRequests.get(),
+                    retriedRequests.get(), circuitBreakerTrips.get(), avg, p50, p95, p99,
+                    0.0, Map.of(), Map.of(), activeRequests
             );
         }
 
@@ -901,13 +924,13 @@ public class RequestExecutor {
 
         boolean allowRequest() {
             if (!isOpen.get()) return true;
-            
-            if (lastFailureTime != null && 
-                Duration.between(lastFailureTime, Instant.now()).compareTo(timeout) > 0) {
+
+            if (lastFailureTime != null &&
+                    Duration.between(lastFailureTime, Instant.now()).compareTo(timeout) > 0) {
                 reset();
                 return true;
             }
-            
+
             return false;
         }
 
