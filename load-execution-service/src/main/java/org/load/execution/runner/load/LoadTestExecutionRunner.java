@@ -22,23 +22,28 @@ public class LoadTestExecutionRunner {
     private final ResourceManager resourceManager;
     private final WorkloadStrategyFactory strategyFactory;
     private final LoadMetrics loadMetrics;
+    private final SolacePublisher solacePublisher;
 
     private final AtomicReference<String> terminationReason = new AtomicReference<>();
     private final AtomicBoolean cancelled = new AtomicBoolean(false);
 
     public LoadTestExecutionRunner(TestPlanSpec testPlanSpec) {
         this.testPlanSpec = testPlanSpec;
-        this.phaseManager = new TestPhaseManager();
-        this.requestExecutor = new RequestExecutor(testPlanSpec);
-        this.resourceManager = new ResourceManager();
+        this.solacePublisher = new SolacePublisher();
+        this.phaseManager = new TestPhaseManager(testPlanSpec.getTestSpec().getId(), solacePublisher);
+        this.requestExecutor = new RequestExecutor(testPlanSpec, solacePublisher);
+        this.resourceManager = new ResourceManager(testPlanSpec.getTestSpec().getId(), solacePublisher);
         this.strategyFactory = new WorkloadStrategyFactory();
-        this.loadMetrics = new LoadMetrics(testPlanSpec);
+        this.loadMetrics = new LoadMetrics(testPlanSpec, solacePublisher);
     }
 
     public CompletableFuture<Void> execute() {
         return CompletableFuture.runAsync(() -> {
             try {
                 log.info("Starting load test execution: {}", testPlanSpec.getTestSpec().getId());
+
+                // Publish test start event
+                publishTestStartEvent();
 
                 phaseManager.startTest();
                 loadMetrics.startTest();
@@ -60,9 +65,12 @@ public class LoadTestExecutionRunner {
                 var totalDuration = Duration.between(testStartTime, testEndTime);
 
                 loadMetrics.completeTest();
-                
+
+                // Publish test completion event
+                publishTestCompletionEvent(testStartTime, testEndTime, totalDuration);
+
                 var testResult = createTestResult(testStartTime, testEndTime, totalDuration);
-                log.info("Publishing test result: {}", testResult);
+                solacePublisher.publishTestResult(testResult);
 
                 phaseManager.completeTest();
                 log.info("Load test completed. Duration: {}s, Reason: {}",
@@ -70,6 +78,7 @@ public class LoadTestExecutionRunner {
 
             } catch (Exception e) {
                 log.error("Load test execution failed", e);
+                publishCriticalEvent("EXECUTION_ERROR", "HIGH", "Load test execution failed: " + e.getMessage());
                 terminateTest("EXECUTION_ERROR: " + e.getMessage());
                 throw new RuntimeException("Load test execution failed", e);
             }
@@ -79,6 +88,7 @@ public class LoadTestExecutionRunner {
     public void cancel() {
         if (cancelled.compareAndSet(false, true)) {
             log.info("Load test cancellation requested - stopping execution gracefully");
+            publishCriticalEvent("CANCELLATION", "MEDIUM", "Load test cancelled by user request");
             terminateTest("CANCELLED");
         } else {
             log.debug("Load test cancellation already in progress");
@@ -114,7 +124,65 @@ public class LoadTestExecutionRunner {
             log.info("Load test cleanup completed successfully");
         } catch (Exception e) {
             log.error("Unexpected error during cleanup", e);
+            publishCriticalEvent("CLEANUP_ERROR", "LOW", "Error during cleanup: " + e.getMessage());
         }
+    }
+
+    private void publishTestStartEvent() {
+        var loadModel = testPlanSpec.getExecution().getLoadModel();
+        var endpoints = testPlanSpec.getTestSpec().getScenarios().stream()
+                .flatMap(s -> s.getRequests().stream())
+                .map(TestPlanSpec.Request::getPath)
+                .distinct()
+                .toArray(String[]::new);
+
+        int expectedTPS = switch (loadModel.getType()) {
+            case OPEN -> loadModel.getArrivalRatePerSec();
+            case CLOSED -> {
+                // Rough estimate for closed model TPS
+                int requestsPerIteration = testPlanSpec.getTestSpec().getScenarios().stream()
+                        .mapToInt(s -> s.getRequests().size()).sum();
+                yield (loadModel.getUsers() * requestsPerIteration) / 60; // rough estimate
+            }
+        };
+
+        var event = new TestStartEvent(
+                testPlanSpec.getTestSpec().getId(),
+                loadModel.getType().toString(),
+                loadModel.getUsers(),
+                loadModel.getDuration() != null ? loadModel.getDuration() : loadModel.getHoldFor(),
+                expectedTPS,
+                endpoints,
+                "load-test", // environment - could be configurable
+                Instant.now()
+        );
+
+        solacePublisher.publishTestStart(event);
+    }
+
+    private void publishTestCompletionEvent(Instant startTime, Instant endTime, Duration duration) {
+        var event = new TestCompletionEvent(
+                testPlanSpec.getTestSpec().getId(),
+                endTime,
+                loadMetrics.getFinalSummary(),
+                getTerminationReason(),
+                duration.getSeconds()
+        );
+
+        solacePublisher.publishTestCompletion(event);
+    }
+
+    private void publishCriticalEvent(String eventType, String severity, String description) {
+        var event = new CriticalEvent(
+                testPlanSpec.getTestSpec().getId(),
+                Instant.now(),
+                eventType,
+                severity,
+                description,
+                severity.equals("HIGH") ? "TEST_FAILURE" : "OPERATIONAL"
+        );
+
+        solacePublisher.publishCriticalEvent(event);
     }
 
     private TestResult createTestResult(Instant startTime, Instant endTime, Duration duration) {

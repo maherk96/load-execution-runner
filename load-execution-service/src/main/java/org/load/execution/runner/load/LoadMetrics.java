@@ -7,6 +7,11 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.time.Instant;
+import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -17,11 +22,13 @@ import java.util.concurrent.atomic.AtomicLong;
  * @since 1.0
  */
 public class LoadMetrics {
-
     private static final Logger log = LoggerFactory.getLogger(LoadMetrics.class);
 
+    private final String testId;
     private final TestPlanSpec testPlanSpec;
+    private final SolacePublisher solacePublisher;
     private final int expectedTotalRequests;
+
     private final AtomicInteger completedRequests = new AtomicInteger(0);
     private final AtomicInteger successfulRequests = new AtomicInteger(0);
     private final AtomicInteger failedRequests = new AtomicInteger(0);
@@ -29,23 +36,34 @@ public class LoadMetrics {
     private final AtomicLong minResponseTime = new AtomicLong(Long.MAX_VALUE);
     private final AtomicLong maxResponseTime = new AtomicLong(0);
 
+    // Store response times for percentile calculation
+    private final List<Long> responseTimes = new CopyOnWriteArrayList<>();
+
     private volatile Instant testStartTime;
     private volatile Instant lastProgressLog = Instant.now();
     private volatile int lastLoggedProgress = 0;
 
-    public LoadMetrics(TestPlanSpec testPlanSpec) {
+    private ScheduledExecutorService metricsScheduler;
+
+    public LoadMetrics(TestPlanSpec testPlanSpec, SolacePublisher solacePublisher) {
+        this.testId = testPlanSpec.getTestSpec().getId();
         this.testPlanSpec = testPlanSpec;
+        this.solacePublisher = solacePublisher;
         this.expectedTotalRequests = calculateExpectedRequests(testPlanSpec);
     }
 
     public void startTest() {
         this.testStartTime = Instant.now();
         log.info("Load test metrics started - Expected total requests: {}", expectedTotalRequests);
+
+        // Start periodic metrics publishing
+        metricsScheduler = Executors.newSingleThreadScheduledExecutor();
+        metricsScheduler.scheduleWithFixedDelay(this::publishMetricsSummary, 30, 30, TimeUnit.SECONDS);
     }
 
     public void recordRequest(boolean success, long responseTimeMs) {
         int completed = completedRequests.incrementAndGet();
-        
+
         if (success) {
             successfulRequests.incrementAndGet();
         } else {
@@ -55,13 +73,72 @@ public class LoadMetrics {
         totalResponseTime.addAndGet(responseTimeMs);
         updateMinMax(responseTimeMs);
 
-        // Log progress periodically
+        // Store for percentile calculation (limit size to prevent memory issues)
+        if (responseTimes.size() < 100000) {
+            responseTimes.add(responseTimeMs);
+        }
+
         logProgressIfNeeded(completed);
     }
 
     public void completeTest() {
+        if (metricsScheduler != null && !metricsScheduler.isShutdown()) {
+            metricsScheduler.shutdown();
+        }
+
+        // Publish final metrics summary
+        publishMetricsSummary();
+
         log.info("Load test metrics completed - Final summary:");
         log.info(getFinalSummary());
+    }
+
+    private void publishMetricsSummary() {
+        int completed = completedRequests.get();
+        if (completed == 0) return;
+
+        double currentTPS = calculateCurrentTPS();
+        double avgResponseTime = totalResponseTime.get() / (double) completed;
+        double errorRate = failedRequests.get() / (double) completed;
+
+        var percentiles = calculatePercentiles();
+
+        var event = new MetricsSummaryEvent(
+                testId,
+                Instant.now(),
+                currentTPS,
+                avgResponseTime,
+                errorRate,
+                0, // activeUsers - could be tracked separately
+                completed,
+                percentiles[0], // p50
+                percentiles[1], // p95
+                percentiles[2]  // p99
+        );
+
+        solacePublisher.publishMetricsSummary(event);
+    }
+
+    private double calculateCurrentTPS() {
+        if (testStartTime == null) return 0.0;
+
+        long elapsedSeconds = java.time.Duration.between(testStartTime, Instant.now()).getSeconds();
+        return elapsedSeconds > 0 ? completedRequests.get() / (double) elapsedSeconds : 0.0;
+    }
+
+    private long[] calculatePercentiles() {
+        if (responseTimes.isEmpty()) {
+            return new long[]{0, 0, 0};
+        }
+
+        var sortedTimes = responseTimes.stream().sorted().toList();
+        int size = sortedTimes.size();
+
+        return new long[]{
+                sortedTimes.get((int) (size * 0.50)), // p50
+                sortedTimes.get((int) (size * 0.95)), // p95
+                sortedTimes.get((int) (size * 0.99))  // p99
+        };
     }
 
     public String getFinalSummary() {
@@ -72,22 +149,22 @@ public class LoadMetrics {
         double avgResponseTime = completed > 0 ? (totalResponseTime.get() / (double) completed) : 0.0;
 
         return String.format(
-            "Requests: %d/%d (%.1f%%), Success: %d (%.1f%%), Failed: %d, " +
-            "Response Times - Avg: %.1fms, Min: %dms, Max: %dms",
-            completed, expectedTotalRequests, 
-            expectedTotalRequests > 0 ? (completed * 100.0 / expectedTotalRequests) : 100.0,
-            successful, successRate, failed,
-            avgResponseTime, 
-            minResponseTime.get() == Long.MAX_VALUE ? 0 : minResponseTime.get(),
-            maxResponseTime.get()
+                "Requests: %d/%d (%.1f%%), Success: %d (%.1f%%), Failed: %d, " +
+                        "Response Times - Avg: %.1fms, Min: %dms, Max: %dms",
+                completed, expectedTotalRequests,
+                expectedTotalRequests > 0 ? (completed * 100.0 / expectedTotalRequests) : 100.0,
+                successful, successRate, failed,
+                avgResponseTime,
+                minResponseTime.get() == Long.MAX_VALUE ? 0 : minResponseTime.get(),
+                maxResponseTime.get()
         );
     }
 
     private int calculateExpectedRequests(TestPlanSpec testPlanSpec) {
         var loadModel = testPlanSpec.getExecution().getLoadModel();
         int requestsPerIteration = testPlanSpec.getTestSpec().getScenarios().stream()
-            .mapToInt(scenario -> scenario.getRequests().size())
-            .sum();
+                .mapToInt(scenario -> scenario.getRequests().size())
+                .sum();
 
         return switch (loadModel.getType()) {
             case CLOSED -> loadModel.getUsers() * loadModel.getIterations() * requestsPerIteration;
@@ -100,8 +177,7 @@ public class LoadMetrics {
 
     private void logProgressIfNeeded(int completed) {
         Instant now = Instant.now();
-        
-        // Log every 10% progress or every 30 seconds, whichever comes first
+
         double currentProgress = expectedTotalRequests > 0 ? (completed * 100.0 / expectedTotalRequests) : 0.0;
         int currentProgressPercent = (int) currentProgress;
         boolean timeTrigger = now.minusSeconds(30).isAfter(lastProgressLog);
@@ -112,11 +188,11 @@ public class LoadMetrics {
             double avgResponseTime = completed > 0 ? (totalResponseTime.get() / (double) completed) : 0.0;
 
             log.info("Progress: {}/{} requests ({}%) - Success: {}% - Avg Response: {}ms",
-                completed, expectedTotalRequests, (int) currentProgress,
-                (int) successRate, (int) avgResponseTime);
+                    completed, expectedTotalRequests, (int) currentProgress,
+                    (int) successRate, (int) avgResponseTime);
 
             lastProgressLog = now;
-            lastLoggedProgress = (currentProgressPercent / 10) * 10; // Round down to nearest 10%
+            lastLoggedProgress = (currentProgressPercent / 10) * 10;
         }
     }
 
@@ -127,7 +203,7 @@ public class LoadMetrics {
 
     private long parseDurationSeconds(String duration) {
         if (duration == null || duration.trim().isEmpty()) return 0;
-        
+
         String trimmed = duration.trim().toLowerCase();
         if (trimmed.endsWith("s")) {
             return Long.parseLong(trimmed.substring(0, trimmed.length() - 1));

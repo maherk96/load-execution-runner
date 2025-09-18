@@ -1,11 +1,9 @@
-// File: org/load/execution/runner/load/strategy/WorkloadStrategyFactory.java
 package org.load.execution.runner.load;
-
 
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * Factory for creating workload strategies based on load model type.
+ * Factory for creating workload strategies with enhanced event publishing.
  *
  * @author Load Test Framework
  * @since 1.0
@@ -19,8 +17,10 @@ public class WorkloadStrategyFactory {
                                            LoadMetrics loadMetrics,
                                            AtomicBoolean cancelled) {
         return switch (loadModel.getType()) {
-            case CLOSED -> new ClosedWorkloadStrategy(phaseManager, requestExecutor, resourceManager, loadMetrics, cancelled);
-            case OPEN -> new OpenWorkloadStrategy(phaseManager, requestExecutor, resourceManager, loadMetrics, cancelled);
+            case CLOSED -> new ClosedWorkloadStrategy(phaseManager, requestExecutor, resourceManager,
+                    loadMetrics, cancelled);
+            case OPEN -> new OpenWorkloadStrategy(phaseManager, requestExecutor, resourceManager,
+                    loadMetrics, cancelled);
         };
     }
 }

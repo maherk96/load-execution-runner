@@ -4,8 +4,10 @@ package org.load.execution.runner.load;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.time.Instant;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
@@ -21,19 +23,37 @@ public class TestPhaseManager {
         INITIALIZING, WARMUP, RAMP_UP, HOLD, COMPLETED, TERMINATED
     }
 
+    private final String testId;
+    private final SolacePublisher solacePublisher;
     private final AtomicReference<TestPhase> currentPhase = new AtomicReference<>(TestPhase.INITIALIZING);
     private final AtomicBoolean testRunning = new AtomicBoolean(false);
     private final CountDownLatch testCompletionLatch = new CountDownLatch(1);
     private final AtomicReference<String> terminationReason = new AtomicReference<>();
+    private final AtomicInteger activeUsers = new AtomicInteger(0);
+
+    public TestPhaseManager(String testId, SolacePublisher solacePublisher) {
+        this.testId = testId;
+        this.solacePublisher = solacePublisher;
+    }
 
     public void startTest() {
         testRunning.set(true);
-        currentPhase.set(TestPhase.INITIALIZING);
+        setPhase(TestPhase.INITIALIZING);
     }
 
-    public void setPhase(TestPhase phase) {
-        currentPhase.set(phase);
-        log.debug("Phase transition: {}", phase);
+    public void setPhase(TestPhase newPhase) {
+        TestPhase oldPhase = currentPhase.getAndSet(newPhase);
+        log.debug("Phase transition: {} -> {}", oldPhase, newPhase);
+
+        // Publish phase transition event
+        var event = new PhaseTransitionEvent(
+                testId,
+                oldPhase,
+                newPhase,
+                Instant.now(),
+                activeUsers.get()
+        );
+        solacePublisher.publishPhaseTransition(event);
     }
 
     public TestPhase getCurrentPhase() {
@@ -44,9 +64,17 @@ public class TestPhaseManager {
         return testRunning.get();
     }
 
+    public void updateActiveUsers(int count) {
+        activeUsers.set(count);
+    }
+
+    public int getActiveUsers() {
+        return activeUsers.get();
+    }
+
     public void terminateTest(String reason) {
         if (testRunning.compareAndSet(true, false)) {
-            currentPhase.set(TestPhase.TERMINATED);
+            setPhase(TestPhase.TERMINATED);
             terminationReason.set(reason);
             testCompletionLatch.countDown();
             log.info("Test termination initiated: {}", reason);
@@ -55,7 +83,7 @@ public class TestPhaseManager {
 
     public void completeTest() {
         if (testRunning.compareAndSet(true, false)) {
-            currentPhase.set(TestPhase.COMPLETED);
+            setPhase(TestPhase.COMPLETED);
             terminationReason.compareAndSet(null, "COMPLETED");
             testCompletionLatch.countDown();
         }
