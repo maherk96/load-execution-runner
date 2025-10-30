@@ -14,24 +14,25 @@ import org.springframework.context.annotation.Configuration;
 @Configuration
 public class ObjectMapperConfig {
 
-    @Bean
-    public ObjectMapper objectMapper() {
-        ObjectMapper mapper = JsonMapper.builder()
-                .enable(MapperFeature.ACCEPT_CASE_INSENSITIVE_PROPERTIES)
-                .enable(JsonReadFeature.ALLOW_JAVA_COMMENTS.mappedFeature())
-                .enable(JsonReadFeature.ALLOW_TRAILING_COMMA.mappedFeature())
-                .enable(JsonReadFeature.ALLOW_SINGLE_QUOTES.mappedFeature())
-                .enable(JsonReadFeature.ALLOW_UNQUOTED_FIELD_NAMES.mappedFeature())
-                .disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
-                .enable(SerializationFeature.INDENT_OUTPUT)
-                .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
-                .disable(SerializationFeature.WRITE_DURATIONS_AS_TIMESTAMPS)
-                .build();
+  @Bean
+  public ObjectMapper objectMapper() {
+    ObjectMapper mapper =
+        JsonMapper.builder()
+            .enable(MapperFeature.ACCEPT_CASE_INSENSITIVE_PROPERTIES)
+            .enable(JsonReadFeature.ALLOW_JAVA_COMMENTS.mappedFeature())
+            .enable(JsonReadFeature.ALLOW_TRAILING_COMMA.mappedFeature())
+            .enable(JsonReadFeature.ALLOW_SINGLE_QUOTES.mappedFeature())
+            .enable(JsonReadFeature.ALLOW_UNQUOTED_FIELD_NAMES.mappedFeature())
+            .disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
+            .enable(SerializationFeature.INDENT_OUTPUT)
+            .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
+            .disable(SerializationFeature.WRITE_DURATIONS_AS_TIMESTAMPS)
+            .build();
 
-        mapper.registerModule(new JavaTimeModule());
-        mapper.setDefaultPropertyInclusion(
-                JsonInclude.Value.construct(JsonInclude.Include.NON_EMPTY, JsonInclude.Include.NON_EMPTY));
+    mapper.registerModule(new JavaTimeModule());
+    mapper.setDefaultPropertyInclusion(
+        JsonInclude.Value.construct(JsonInclude.Include.NON_EMPTY, JsonInclude.Include.NON_EMPTY));
 
-        return mapper;
-    }
+    return mapper;
+  }
 }

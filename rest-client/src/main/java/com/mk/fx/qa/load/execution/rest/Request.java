@@ -5,9 +5,9 @@ import lombok.Data;
 
 @Data
 public class Request {
-    private HttpMethod method;
-    private String path;
-    private Map<String, String> headers;
-    private Map<String, String> query;
-    private Object body;
+  private HttpMethod method;
+  private String path;
+  private Map<String, String> headers;
+  private Map<String, String> query;
+  private Object body;
 }

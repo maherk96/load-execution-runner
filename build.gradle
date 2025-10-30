@@ -1,34 +1,51 @@
-plugins {
-    id "java"
-}
-
-java {
-    toolchain {
-        languageVersion = JavaLanguageVersion.of(21)
-    }
-}
-
-tasks.withType(Test).configureEach {
-    useJUnitPlatform()
-}
-
-ext {
-    slf4jVersion = "2.0.9"
-    lombokVersion = "1.18.34"
-    junitBomVersion = "5.9.1"
-}
-
-subprojects {
-    apply plugin: "java"
-
-    repositories {
-        mavenCentral()
+// groovy
+    plugins {
+        id "java"
+        id "com.diffplug.spotless" version "6.21.0"
     }
 
-    dependencies {
-        implementation "org.slf4j:slf4j-api:${slf4jVersion}"
-        compileOnly "org.projectlombok:lombok:${lombokVersion}"
-        annotationProcessor "org.projectlombok:lombok:${lombokVersion}"
-        testImplementation platform("org.junit:junit-bom:${junitBomVersion}")
+    java {
+        toolchain {
+            languageVersion = JavaLanguageVersion.of(21)
+        }
     }
-}
+
+    tasks.withType(Test).configureEach {
+        useJUnitPlatform()
+    }
+
+    ext {
+        slf4jVersion = "2.0.9"
+        lombokVersion = "1.18.34"
+        junitBomVersion = "5.9.1"
+    }
+
+    subprojects {
+        apply plugin: "java"
+        apply plugin: "com.diffplug.spotless"
+
+        repositories {
+            mavenCentral()
+        }
+
+        dependencies {
+            implementation "org.slf4j:slf4j-api:${slf4jVersion}"
+            compileOnly "org.projectlombok:lombok:${lombokVersion}"
+            annotationProcessor "org.projectlombok:lombok:${lombokVersion}"
+            testImplementation platform("org.junit:junit-bom:${junitBomVersion}")
+        }
+
+        spotless {
+            java {
+                target 'src/**/*.java'
+                googleJavaFormat('1.17.0')
+                removeUnusedImports()
+                importOrder()
+            }
+            format 'misc', {
+                target '*.md', '*.gradle', '*.yml', '*.yaml', '.gitignore'
+                trimTrailingWhitespace()
+                endWithNewline()
+            }
+        }
+    }

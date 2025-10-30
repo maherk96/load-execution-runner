@@ -9,30 +9,30 @@ import lombok.Getter;
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class LoadModelConfig {
 
-    @JsonProperty("type")
-    private LoadModelType type;
+  @JsonProperty("type")
+  private LoadModelType type;
 
-    @JsonProperty("arrivalRatePerSec")
-    private Double arrivalRatePerSec;
+  @JsonProperty("arrivalRatePerSec")
+  private Double arrivalRatePerSec;
 
-    @JsonProperty("maxConcurrent")
-    private Integer maxConcurrent;
+  @JsonProperty("maxConcurrent")
+  private Integer maxConcurrent;
 
-    @JsonProperty("duration")
-    private String duration;
+  @JsonProperty("duration")
+  private String duration;
 
-    @JsonProperty("iterations")
-    private Integer iterations;
+  @JsonProperty("iterations")
+  private Integer iterations;
 
-    @JsonProperty("users")
-    private Integer users;
+  @JsonProperty("users")
+  private Integer users;
 
-    @JsonProperty("rampUp")
-    private String rampUp;
+  @JsonProperty("rampUp")
+  private String rampUp;
 
-    @JsonProperty("holdFor")
-    private String holdFor;
+  @JsonProperty("holdFor")
+  private String holdFor;
 
-    @JsonProperty("warmup")
-    private String warmup;
+  @JsonProperty("warmup")
+  private String warmup;
 }

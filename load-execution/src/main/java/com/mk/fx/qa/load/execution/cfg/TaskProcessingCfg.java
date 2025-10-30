@@ -14,10 +14,9 @@ import org.springframework.validation.annotation.Validated;
 @ConfigurationProperties(prefix = "load.tasks")
 public class TaskProcessingCfg {
 
-    @Min(1)
-    @Max(64)
-    private int concurrency = 1;
+  @Min(1)
+  @Max(64)
+  private int concurrency = 1;
 
-    @Positive
-    private int historySize = 50;
+  @Positive private int historySize = 50;
 }

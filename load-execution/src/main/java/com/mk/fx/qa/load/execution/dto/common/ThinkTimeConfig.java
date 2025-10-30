@@ -9,15 +9,15 @@ import lombok.Getter;
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class ThinkTimeConfig {
 
-    @JsonProperty("type")
-    private ThinkTimeType type;
+  @JsonProperty("type")
+  private ThinkTimeType type;
 
-    @JsonProperty("min")
-    private Long min;
+  @JsonProperty("min")
+  private Long min;
 
-    @JsonProperty("max")
-    private Long max;
+  @JsonProperty("max")
+  private Long max;
 
-    @JsonProperty("fixedMs")
-    private Long fixedMs;
+  @JsonProperty("fixedMs")
+  private Long fixedMs;
 }

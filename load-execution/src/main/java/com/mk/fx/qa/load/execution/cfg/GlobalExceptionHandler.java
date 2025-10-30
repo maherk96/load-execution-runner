@@ -10,19 +10,19 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
-    private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
+  private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
-    @ExceptionHandler(IllegalArgumentException.class)
-    public ResponseEntity<com.mk.fx.qa.load.execution.cfg.ErrorResponse> handleIllegalArgument(IllegalArgumentException ex) {
-        log.warn("Bad request: {}", ex.getMessage());
-        return ResponseEntity.badRequest()
-                .body(new ErrorResponse("Invalid request", ex.getMessage()));
-    }
+  @ExceptionHandler(IllegalArgumentException.class)
+  public ResponseEntity<com.mk.fx.qa.load.execution.cfg.ErrorResponse> handleIllegalArgument(
+      IllegalArgumentException ex) {
+    log.warn("Bad request: {}", ex.getMessage());
+    return ResponseEntity.badRequest().body(new ErrorResponse("Invalid request", ex.getMessage()));
+  }
 
-    @ExceptionHandler(Exception.class)
-    public ResponseEntity<ErrorResponse> handleUnexpected(Exception ex) {
-        log.error("Unexpected error", ex);
-        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                .body(new ErrorResponse("Internal error", "An unexpected error occurred"));
-    }
+  @ExceptionHandler(Exception.class)
+  public ResponseEntity<ErrorResponse> handleUnexpected(Exception ex) {
+    log.error("Unexpected error", ex);
+    return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+        .body(new ErrorResponse("Internal error", "An unexpected error occurred"));
+  }
 }

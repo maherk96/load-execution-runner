@@ -1,7 +1,6 @@
 package com.mk.fx.qa.load.execution.metrics;
 
 import com.mk.fx.qa.load.execution.model.LoadModelType;
-
 import java.time.Duration;
 
 public record TaskConfig(

@@ -8,11 +8,12 @@ import org.springframework.context.annotation.Configuration;
 @Configuration
 public class OpenApiCfg {
 
-    @Bean
-    public OpenAPI openApi() {
-        return new OpenAPI()
-                .info(new Info()
-                        .title("Load Execution Runner API")
-                        .description("API for executing load tests."));
-    }
+  @Bean
+  public OpenAPI openApi() {
+    return new OpenAPI()
+        .info(
+            new Info()
+                .title("Load Execution Runner API")
+                .description("API for executing load tests."));
+  }
 }
