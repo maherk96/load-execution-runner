@@ -11,9 +11,7 @@ import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
-/**
- * Configuration class for customizing the Jackson ObjectMapper used in the application.
- */
+/** Configuration class for customizing the Jackson ObjectMapper used in the application. */
 @Configuration
 public class ObjectMapperConfig {
 
