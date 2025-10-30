@@ -426,11 +426,11 @@ public class LoadMetrics {
     m.successRate = m.totalRequests == 0 ? 0.0 : (double) m.successCount / m.totalRequests;
     m.achievedRps = achievedRps();
     TaskRunReport.Latency lat = new TaskRunReport.Latency();
-    lat.avg = latencyAvgMs().orElse(null);
-    lat.min = latencyMinMs().orElse(null);
-    lat.max = latencyMaxMs().orElse(null);
-    lat.p95 = latencyP95Ms().orElse(null);
-    lat.p99 = latencyP99Ms().orElse(null);
+    lat.avg = latencyAvgMs().orElse(0L);
+    lat.min = latencyMinMs().orElse(0L);
+    lat.max = latencyMaxMs().orElse(0L);
+    lat.p95 = latencyP95Ms().orElse(0L);
+    lat.p99 = latencyP99Ms().orElse(0L);
     m.latency = lat;
 
     // error breakdown array
@@ -513,8 +513,25 @@ public class LoadMetrics {
 
   private String classifyError(Throwable t) {
     if (t == null) return "UNKNOWN";
-    var clsName = t.getClass().getSimpleName();
-    return clsName.isBlank() ? "EXCEPTION" : clsName;
+
+    // Look for the root cause for better classification
+    Throwable rootCause = t;
+    while (rootCause.getCause() != null) {
+      rootCause = rootCause.getCause();
+    }
+
+    // Use root cause class name for classification
+    var clsName = rootCause.getClass().getSimpleName();
+
+    // Map common exceptions to friendly names
+    return switch (clsName) {
+      case "ConnectException" -> "CONNECTION_REFUSED";
+      case "SocketTimeoutException" -> "SOCKET_TIMEOUT";
+      case "UnknownHostException" -> "UNKNOWN_HOST";
+      case "SSLException" -> "SSL_ERROR";
+      case "HttpTimeoutException" -> "HTTP_TIMEOUT";
+      default -> clsName.isBlank() ? "EXCEPTION" : clsName;
+    };
   }
 
   public Map<String, Long> errorBreakdown() {
@@ -524,27 +541,61 @@ public class LoadMetrics {
   }
 
   private TaskRunReport.ErrorSample buildErrorSample(String type, Throwable t) {
-    var msg = t.getMessage();
+    // Get the root cause
+    Throwable rootCause = t;
+    while (rootCause.getCause() != null) {
+      rootCause = rootCause.getCause();
+    }
+
+    // Use the most descriptive message available
+    String msg = t.getMessage();
+    if (msg == null || msg.equals("null")) {
+      msg = rootCause.getMessage();
+    }
+    if (msg == null || msg.equals("null")) {
+      msg = rootCause.getClass().getSimpleName() + " occurred";
+    }
+
     List<String> frames = new ArrayList<>();
+
+    // Add root cause info first (most important)
+    if (rootCause != t) {
+      frames.add(
+          "ROOT CAUSE: "
+              + rootCause.getClass().getSimpleName()
+              + " - "
+              + (rootCause.getMessage() != null ? rootCause.getMessage() : "no message"));
+
+      // Add a few root cause stack frames
+      StackTraceElement[] rootStack = rootCause.getStackTrace();
+      int rootLimit = Math.min(3, rootStack.length);
+      for (int i = 0; i < rootLimit; i++) {
+        StackTraceElement frame = rootStack[i];
+        frames.add("  at " + formatStackFrame(frame));
+      }
+      frames.add("");
+    }
+
+    // Then add the wrapper exception stack
+    frames.add("WRAPPED BY: " + t.getClass().getSimpleName());
     StackTraceElement[] stackTrace = t.getStackTrace();
     var limit = Math.min(10, stackTrace.length);
     for (int i = 0; i < limit; i++) {
-      StackTraceElement frame = stackTrace[i];
-      frames.add(
-          frame.getClassName()
-              + "."
-              + frame.getMethodName()
-              + "("
-              + frame.getFileName()
-              + ":"
-              + frame.getLineNumber()
-              + ")");
+      frames.add("  at " + formatStackFrame(stackTrace[i]));
     }
-    var cause = t.getCause();
-    if (cause != null) {
-      frames.add("Caused by: " + cause.getClass().getSimpleName() + "; " + cause.getMessage());
-    }
+
     return new TaskRunReport.ErrorSample(type, msg, frames);
+  }
+
+  private String formatStackFrame(StackTraceElement frame) {
+    return frame.getClassName()
+        + "."
+        + frame.getMethodName()
+        + "("
+        + frame.getFileName()
+        + ":"
+        + frame.getLineNumber()
+        + ")";
   }
 
   public List<TimeSeriesPoint> getTimeSeries() {

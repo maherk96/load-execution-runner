@@ -141,35 +141,60 @@ public final class ClosedLoadExecutor {
       AtomicInteger completedUsers,
       VirtualUserIterationRunner iterationRunner) {
     log.info("Task {} virtual user {} started", taskId, userIndex + 1);
+    int successfulIterations = 0;
+
     for (int iteration = 0; iteration < iterations; iteration++) {
       if (shouldStop(cancellationRequested, cancellationObserved)) {
         log.info(
-            "Task {} virtual user {} stopping due to cancellation at iteration {}",
+            "Task {} virtual user {} stopping due to cancellation at iteration {} ({}/{} completed)",
             taskId,
             userIndex + 1,
-            iteration);
+            iteration,
+            successfulIterations,
+            iterations);
         return;
       }
 
       if (isHoldExpired(holdDeadline)) {
         holdExpired.set(true);
         log.info(
-            "Task {} virtual user {} stopping due to hold expiration at iteration {}",
+            "Task {} virtual user {} stopping due to hold expiration at iteration {} ({}/{} completed)",
             taskId,
             userIndex + 1,
-            iteration);
+            iteration,
+            successfulIterations,
+            iterations);
         return;
       }
+
       try {
         iterationRunner.run(userIndex, iteration);
+        successfulIterations++;
       } catch (InterruptedException interrupted) {
         Thread.currentThread().interrupt();
-        log.info("Task {} virtual user {} interrupted", taskId, userIndex + 1);
+        log.info(
+            "Task {} virtual user {} interrupted at iteration {} ({}/{} completed)",
+            taskId,
+            userIndex + 1,
+            iteration,
+            successfulIterations,
+            iterations);
         return;
       } catch (Exception ex) {
-        throw new RuntimeException("Virtual user iteration failed", ex);
+        log.error(
+            "Task {} virtual user {} iteration {} failed: {} - stopping this user ({}/{} completed)",
+            taskId,
+            userIndex + 1,
+            iteration,
+            ex.getMessage(),
+            successfulIterations,
+            iterations,
+            ex);
+        // Stop this virtual user but let others continue
+        return;
       }
     }
+
     var done = completedUsers.incrementAndGet();
     log.info(
         "Task {} virtual user {} completed all {} iterations (users completed {}/{})",

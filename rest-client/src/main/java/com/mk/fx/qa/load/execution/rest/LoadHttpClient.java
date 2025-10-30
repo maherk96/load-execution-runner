@@ -116,13 +116,41 @@ public class LoadHttpClient implements AutoCloseable {
       return result;
 
     } catch (HttpTimeoutException e) {
-      log.error(
-          "Request timed out after {} seconds: {}", requestTimeout.getSeconds(), e.getMessage());
-      throw new RuntimeException(
-          "Request timed out after " + requestTimeout.getSeconds() + "s: " + e.getMessage(), e);
+      var msg =
+          String.format(
+              "Request timed out after %d seconds to %s: %s",
+              requestTimeout.getSeconds(), baseUrl + request.getPath(), e.getMessage());
+      log.error(msg);
+      throw new RuntimeException(msg, e);
+
+    } catch (java.net.ConnectException e) {
+      // Specific handling for connection failures
+      var msg =
+          String.format(
+              "Connection refused to %s: %s",
+              baseUrl + request.getPath(),
+              e.getMessage() != null ? e.getMessage() : "Unable to connect");
+      log.error(msg);
+      throw new RuntimeException(msg, e);
+
+    } catch (java.io.IOException e) {
+      // Network/IO errors
+      var msg =
+          String.format(
+              "IO error requesting %s: %s",
+              baseUrl + request.getPath(),
+              e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName());
+      log.error(msg);
+      throw new RuntimeException(msg, e);
+
     } catch (Exception e) {
-      log.error("Error executing request: {}", e.getMessage());
-      throw new RuntimeException("Error executing request: " + e.getMessage(), e);
+      var msg =
+          String.format(
+              "Error executing request to %s: %s",
+              baseUrl + request.getPath(),
+              e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName());
+      log.error(msg);
+      throw new RuntimeException(msg, e);
     }
   }
 
