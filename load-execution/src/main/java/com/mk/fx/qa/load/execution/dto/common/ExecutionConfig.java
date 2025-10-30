@@ -5,6 +5,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import java.util.Map;
 import lombok.Getter;
 
+/** Execution configuration for load testing. */
 @Getter
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class ExecutionConfig {

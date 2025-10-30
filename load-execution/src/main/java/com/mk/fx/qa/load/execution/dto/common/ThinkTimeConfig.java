@@ -5,6 +5,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import com.mk.fx.qa.load.execution.model.ThinkTimeType;
 import lombok.Getter;
 
+/** Think time configuration for load testing. */
 @Getter
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class ThinkTimeConfig {
