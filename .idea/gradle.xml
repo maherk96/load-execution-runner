@@ -4,15 +4,28 @@
   <component name="GradleSettings">
     <option name="linkedExternalProjectsSettings">
       <GradleProjectSettings>
+        <compositeConfiguration>
+          <compositeBuild compositeDefinitionSource="SCRIPT">
+            <builds>
+              <build path="$PROJECT_DIR$/../qa-fix-client" name="qa-fix-client">
+                <projects>
+                  <project path="$PROJECT_DIR$/../qa-fix-client" />
+                </projects>
+              </build>
+            </builds>
+          </compositeBuild>
+        </compositeConfiguration>
         <option name="externalProjectPath" value="$PROJECT_DIR$" />
         <option name="gradleJvm" value="ms-21" />
         <option name="modules">
           <set>
             <option value="$PROJECT_DIR$" />
             <option value="$PROJECT_DIR$/api" />
+            <option value="$PROJECT_DIR$/fix-client" />
             <option value="$PROJECT_DIR$/load-execution" />
             <option value="$PROJECT_DIR$/load-execution-service" />
             <option value="$PROJECT_DIR$/rest-client" />
+            <option value="$PROJECT_DIR$/../qa-fix-client" />
           </set>
         </option>
       </GradleProjectSettings>

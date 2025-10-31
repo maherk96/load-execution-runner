@@ -1,0 +1,14 @@
+{
+  "clients": [
+    {
+      "name": "TRAP-A-001-QUOTE",
+      "port": "36112",
+      "location": "TEST"
+    },
+    {
+      "name": "TRAP-A-001-TRADE",
+      "port": "46112",
+      "location": "TEST"
+    }
+  ]
+}

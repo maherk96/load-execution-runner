@@ -1,0 +1,58 @@
+{
+  "common": {
+    "ConnectionType": "initiator",
+    "ReconnectInterval": "5",
+    "FileStorePath": "store",
+    "SLF4JLogHeartbeats": "N",
+    "StartDay": "Sunday",
+    "StartTime": "14:00:00",
+    "EndDay": "Friday",
+    "EndTime": "22:05:00",
+    "UseDataDictionary": "Y",
+    "HttpAcceptPort": "9899",
+    "ValidateLengthAndChecksum": "Y",
+    "ValidateFieldsOutOfOrder": "Y",
+    "ValidateFieldsHaveValues": "Y",
+    "ValidateUserDefinedFields": "Y",
+    "CheckCompID": "Y",
+    "ResetOnLogout": "Y",
+    "ResetOnLogon": "Y",
+    "ResetOnDisconnect": "N",
+    "DefaultApplVerID": "FIX.4.4",
+    "BeginString": "FIX.4.4",
+    "HeartBtInt": "30",
+    "TargetCompID": "EPAM",
+    "SLF4JLogEventCategory": "FIX_CLIENT.EPAM.events",
+    "SLF4JLogIncomingMessageCategory": "FIX_CLIENT.EPAM.messages.in",
+    "SLF4JLogOutgoingMessageCategory": "FIX_CLIENT.EPAM.messages.out",
+    "TargetSubID": "FXSPOT"
+  },
+  "connections": {
+    "TEST": {
+      "quote": {
+        "SocketConnectHost": "localhost"
+      },
+      "trade": {
+        "SocketConnectHost": "localhost"
+      }
+    }
+  },
+  "clients": {
+    "trap_client": {
+      "quoteSession": {
+        "SenderCompID": "TRAP-A-001-QUOTE"
+      },
+      "tradeSession": {
+        "SenderCompID": "TRAP-A-001-TRADE"
+      },
+      "other": {
+        "clientStreamName": "TRAP-A-001",
+        "account": "35944156",
+        "targetSubID": "FXSPOT",
+        "senderSubID": "missing",
+        "password": "missing",
+        "defaultCstmApplVerID": "CSAT_7.0.16"
+      }
+    }
+  }
+}

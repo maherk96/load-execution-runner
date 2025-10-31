@@ -3,3 +3,5 @@ include 'load-execution-service'
 include 'rest-client'
 include 'api'
 include 'load-execution'
+include 'fix-client'
+includeBuild('../qa-fix-client')

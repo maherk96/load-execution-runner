@@ -18,6 +18,8 @@
         slf4jVersion = "2.0.9"
         lombokVersion = "1.18.34"
         junitBomVersion = "5.9.1"
+        log4jVersion = "2.20.0"
+
     }
 
     subprojects {
@@ -30,9 +32,13 @@
 
         dependencies {
             implementation "org.slf4j:slf4j-api:${slf4jVersion}"
+            implementation "org.apache.logging.log4j:log4j-api:${log4jVersion}"
+            implementation  "org.apache.logging.log4j:log4j-core:${log4jVersion}"
+            implementation "org.apache.logging.log4j:log4j-slf4j-impl:${log4jVersion}"
             compileOnly "org.projectlombok:lombok:${lombokVersion}"
             annotationProcessor "org.projectlombok:lombok:${lombokVersion}"
             testImplementation platform("org.junit:junit-bom:${junitBomVersion}")
+            implementation 'com.qa.quick.fix:qa-fix-client:1.0-SNAPSHOT'
         }
 
         spotless {

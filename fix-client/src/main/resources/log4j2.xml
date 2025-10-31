@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Configuration status="WARN">
+
+    <Appenders>
+        <Console name="Console" target="SYSTEM_OUT">
+            <PatternLayout pattern="%d [%t] %-5p %c{1} %m%n%n"/>
+        </Console>
+
+        <RollingFile name="LogFile"
+                     fileName="logs/app_current.log"
+                     filePattern="logs/app_%d{yyyy-MM-dd-HH-mm-ss}-%i.log">
+            <PatternLayout pattern="%d [%t] %-5p %c{1} %m%n%n"/>
+            <Policies>
+                <OnStartupTriggeringPolicy/>
+            </Policies>
+        </RollingFile>
+
+        <!-- appenders for FIX sessions -->
+        <RollingFile name="FIXIncomingLogFile"
+                     fileName="logs/fix_incoming_messages.log"
+                     filePattern="logs/fix_incoming-%d{yyyy-MM-dd-HH-mm-ss}-%i.log">
+            <PatternLayout pattern="%d [%t] %-5p %c{1} %m%n%n"/>
+            <Policies>
+                <SizeBasedTriggeringPolicy/>
+            </Policies>
+        </RollingFile>
+
+        <RollingFile name="FIXOutgoingLogFile"
+                     fileName="logs/fix_outgoing_messages.log"
+                     filePattern="logs/fix_outgoing-%d{yyyy-MM-dd-HH-mm-ss}-%i.log">
+            <PatternLayout pattern="%d [%t] %-5p %c{1} %m%n%n"/>
+            <Policies>
+                <SizeBasedTriggeringPolicy/>
+            </Policies>
+        </RollingFile>
+
+        <RollingFile name="FIXEventLogFile"
+                     fileName="logs/fix_event_messages.log"
+                     filePattern="logs/fix_event-%d{yyyy-MM-dd-HH-mm-ss}-%i.log">
+            <PatternLayout pattern="%d [%t] %-5p %c{1} %m%n%n"/>
+            <Policies>
+                <SizeBasedTriggeringPolicy/>
+            </Policies>
+        </RollingFile>
+    </Appenders>
+
+    <Loggers>
+        <Logger name="FIX_CLIENT.EPAM.messages.in" level="INFO" additivity="false">
+            <AppenderRef ref="FIXIncomingLogFile"/>
+        </Logger>
+
+        <Logger name="FIX_CLIENT.EPAM.messages.out" level="INFO" additivity="false">
+            <AppenderRef ref="FIXOutgoingLogFile"/>
+        </Logger>
+
+        <Logger name="FIX_CLIENT.EPAM.events" level="INFO" additivity="false">
+            <AppenderRef ref="FIXEventLogFile"/>
+        </Logger>
+
+        <Root level="INFO">
+            <AppenderRef ref="Console"/>
+            <AppenderRef ref="LogFile"/>
+        </Root>
+    </Loggers>
+
+</Configuration>
