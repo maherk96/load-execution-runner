@@ -339,5 +339,4 @@ final class LoadReportBuilder {
       s.concerns.add("lowUtilization=" + String.format("%.1f%%", ca.utilizationPercent));
     return s;
   }
-
 }

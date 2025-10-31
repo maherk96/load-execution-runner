@@ -171,5 +171,4 @@ public class TaskRunReport {
     public List<String> highlights;
     public List<String> concerns;
   }
-
 }
