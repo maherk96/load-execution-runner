@@ -1,0 +1,40 @@
+plugins {
+    id 'java-library'
+    id 'org.springframework.boot' version '3.3.5'
+    id 'io.spring.dependency-management' version '1.1.6'
+}
+
+springBoot {
+    mainClass = 'com.citi.fx.qa.load.execution.LoadExecutionRunnerMain'
+}
+
+ext {
+    mapstructVersion = '1.6.3'
+    guavaVersion = '32.1.2-jre'
+    jakartaValidationVersion = '3.0.2'
+    hibernateValidatorVersion = '7.0.5.Final'
+    springdocVersion = '2.6.0'
+}
+
+dependencies {
+    implementation 'org.springframework.boot:spring-boot-starter'
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+    implementation "jakarta.validation:jakarta.validation-api:${jakartaValidationVersion}"
+    implementation "org.hibernate.validator:hibernate-validator:${hibernateValidatorVersion}"
+    implementation "com.google.guava:guava:${guavaVersion}"
+
+    implementation "org.mapstruct:mapstruct:${mapstructVersion}"
+    annotationProcessor "org.mapstruct:mapstruct-processor:${mapstructVersion}"
+
+    implementation "org.springdoc:springdoc-openapi-starter-webmvc-ui:${springdocVersion}"
+
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+
+    implementation project(':api')
+    implementation project(':rest-client')
+}
+
+test {
+    useJUnitPlatform()
+}
