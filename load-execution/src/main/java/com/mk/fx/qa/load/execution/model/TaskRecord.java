@@ -7,6 +7,10 @@ import java.util.UUID;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
+/**
+ * Represents a record of a load task, including its status, timestamps, error messages, and
+ * processing duration.
+ */
 public class TaskRecord {
 
   private final LoadTask task;

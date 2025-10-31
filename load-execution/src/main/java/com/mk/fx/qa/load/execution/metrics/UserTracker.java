@@ -9,6 +9,10 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
+/**
+ * Tracks per-user lifecycle and progress for closed model runs, including current active
+ * iterations, start/end timestamps and per-user iteration counts for histogram reporting.
+ */
 final class UserTracker {
   private final AtomicInteger usersStarted = new AtomicInteger();
   private final AtomicInteger usersCompleted = new AtomicInteger();

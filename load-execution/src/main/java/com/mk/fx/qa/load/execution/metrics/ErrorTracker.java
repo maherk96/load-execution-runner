@@ -8,6 +8,13 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicLong;
 
+/**
+ * Tracks failures during execution, providing totals, categorized breakdown and capped samples.
+ *
+ * <p>Classification derives a coarse error type from the root cause class, with special handling
+ * for common network failures. A small number of formatted stack sample entries are retained for
+ * inclusion in the final report.
+ */
 final class ErrorTracker {
   private static final int MAX_ERROR_SAMPLES = 5;
 

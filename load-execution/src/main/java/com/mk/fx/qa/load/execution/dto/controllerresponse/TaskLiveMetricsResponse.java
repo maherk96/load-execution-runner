@@ -3,13 +3,19 @@ package com.mk.fx.qa.load.execution.dto.controllerresponse;
 import com.mk.fx.qa.load.execution.model.LoadModelType;
 import java.time.Duration;
 import java.util.Map;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
 import lombok.Data;
+import lombok.NoArgsConstructor;
 
 /**
  * Represents the live metrics of a task, including its configuration and current state. This class
  * is used to provide real-time feedback on the task's execution.
  */
 @Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
 public class TaskLiveMetricsResponse {
 
   private String taskId;

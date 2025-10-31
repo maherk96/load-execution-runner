@@ -7,6 +7,7 @@ import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 import org.mapstruct.Named;
 
+/** Mapper interface for converting TaskSubmissionRequest DTOs to LoadTask domain objects. */
 @Mapper(componentModel = "spring")
 public interface TaskMapper {
 

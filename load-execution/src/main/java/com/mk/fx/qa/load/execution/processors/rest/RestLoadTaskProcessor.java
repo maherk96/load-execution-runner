@@ -35,6 +35,10 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
+/**
+ * Processor for executing REST load tasks based on the provided task definition and execution
+ * configuration.
+ */
 @Slf4j
 @Component
 public class RestLoadTaskProcessor implements LoadTaskProcessor {
@@ -46,6 +50,11 @@ public class RestLoadTaskProcessor implements LoadTaskProcessor {
   private final Map<UUID, AtomicBoolean> cancellationTokens = new ConcurrentHashMap<>();
   private final LoadMetricsRegistry metricsRegistry;
 
+  /**
+   * Constructs a RestLoadTaskProcessor with the specified LoadMetricsRegistry.
+   *
+   * @param metricsRegistry the registry for load metrics
+   */
   public RestLoadTaskProcessor(LoadMetricsRegistry metricsRegistry) {
     this.metricsRegistry = metricsRegistry;
   }
@@ -55,6 +64,12 @@ public class RestLoadTaskProcessor implements LoadTaskProcessor {
     return TaskType.REST;
   }
 
+  /**
+   * Executes the REST load task based on the provided TaskSubmissionRequest.
+   *
+   * @param request the task submission request containing task details
+   * @throws Exception if an error occurs during task execution
+   */
   @Override
   public void execute(TaskSubmissionRequest request) throws Exception {
     Objects.requireNonNull(request, "Task request must not be null");
@@ -85,11 +100,22 @@ public class RestLoadTaskProcessor implements LoadTaskProcessor {
     }
   }
 
+  /**
+   * Cancels the load task with the specified task ID.
+   *
+   * @param taskId the ID of the task to cancel
+   */
   @Override
   public void cancel(UUID taskId) {
     cancellationTokens.computeIfAbsent(taskId, key -> new AtomicBoolean(true)).set(true);
   }
 
+  /**
+   * Builds a LoadHttpClient based on the provided test specification.
+   *
+   * @param testSpec the REST test specification
+   * @return the constructed LoadHttpClient
+   */
   private LoadHttpClient buildClient(RestLoadTaskDefinition.RestTestSpec testSpec) {
     RestLoadTaskDefinition.GlobalConfig globalConfig = testSpec.getGlobalConfig();
     if (globalConfig == null
@@ -109,6 +135,17 @@ public class RestLoadTaskProcessor implements LoadTaskProcessor {
         globalConfig.getBaseUrl(), connTimeoutSeconds, requestTimeoutSeconds, headers, vars);
   }
 
+  /**
+   * Executes the load task using the open load model.
+   *
+   * @param taskId the ID of the task
+   * @param client the LoadHttpClient to use for requests
+   * @param testSpec the REST test specification
+   * @param thinkTime the think time strategy
+   * @param loadModel the load model configuration
+   * @param cancelled the cancellation token
+   * @throws Exception if an error occurs during execution
+   */
   private void executeOpenModel(
       UUID taskId,
       LoadHttpClient client,
@@ -206,6 +243,17 @@ public class RestLoadTaskProcessor implements LoadTaskProcessor {
     }
   }
 
+  /**
+   * Executes the load task using the closed load model.
+   *
+   * @param taskId the ID of the task
+   * @param client the LoadHttpClient to use for requests
+   * @param testSpec the REST test specification
+   * @param thinkTime the think time strategy
+   * @param loadModel the load model configuration
+   * @param cancelled the cancellation token
+   * @throws Exception if an error occurs during execution
+   */
   private void executeClosedModel(
       UUID taskId,
       LoadHttpClient client,
@@ -307,6 +355,18 @@ public class RestLoadTaskProcessor implements LoadTaskProcessor {
     return total;
   }
 
+  /**
+   * Executes all scenarios defined in the test specification.
+   *
+   * @param client the LoadHttpClient to use for requests
+   * @param scenarios the list of scenarios to execute
+   * @param thinkTime the think time strategy
+   * @param cancelled the cancellation token
+   * @param metrics the load metrics to record results
+   * @param restMetrics the REST protocol metrics to record results
+   * @param userIndex the index of the virtual user (nullable for OPEN model)
+   * @throws InterruptedException if the execution is cancelled
+   */
   private void executeAllScenarios(
       LoadHttpClient client,
       List<RestLoadTaskDefinition.Scenario> scenarios,
@@ -358,6 +418,12 @@ public class RestLoadTaskProcessor implements LoadTaskProcessor {
     }
   }
 
+  /**
+   * Converts a RequestSpec to an HTTP Request.
+   *
+   * @param requestSpec the request specification
+   * @return the constructed HTTP Request
+   */
   private Request toHttpRequest(RestLoadTaskDefinition.RequestSpec requestSpec) {
     if (requestSpec.getMethod() == null || requestSpec.getMethod().isBlank()) {
       throw new IllegalArgumentException("Request method is required");
@@ -393,6 +459,12 @@ public class RestLoadTaskProcessor implements LoadTaskProcessor {
     }
   }
 
+  /**
+   * Checks if the task has been cancelled and throws InterruptedException if so.
+   *
+   * @param cancelled the cancellation token
+   * @throws InterruptedException if the task is cancelled
+   */
   private void checkCancelled(AtomicBoolean cancelled) throws InterruptedException {
     if (cancelled.get() || Thread.currentThread().isInterrupted()) {
       throw new InterruptedException("Task cancelled");

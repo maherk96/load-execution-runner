@@ -3,6 +3,11 @@ package com.mk.fx.qa.load.execution.metrics;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicLong;
 
+/**
+ * Tracks latency distribution statistics in a thread-safe manner.
+ *
+ * <p>Maintains running min/max/sum and a {@link Reservoir} for approximate percentiles.
+ */
 final class LatencyTracker {
 
   private final AtomicLong min = new AtomicLong(Long.MAX_VALUE);

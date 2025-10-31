@@ -4,6 +4,10 @@ import java.time.Instant;
 import java.util.Map;
 import java.util.UUID;
 
+/**
+ * Represents a load task with its associated properties such as ID, type, creation timestamp, and
+ * additional data.
+ */
 public class LoadTask {
 
   private final UUID id;

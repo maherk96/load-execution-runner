@@ -6,6 +6,7 @@ import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+/** Strategy for implementing think time delays based on configuration. */
 public class ThinkTimeStrategy {
 
   private static final long SLEEP_CHUNK_MILLIS = 200L;

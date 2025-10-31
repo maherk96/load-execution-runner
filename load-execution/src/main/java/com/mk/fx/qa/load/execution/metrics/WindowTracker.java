@@ -3,6 +3,10 @@ package com.mk.fx.qa.load.execution.metrics;
 import java.time.Instant;
 import java.util.concurrent.atomic.AtomicLong;
 
+/**
+ * Aggregates latency and request stats within rolling windows for time-series reporting. Resets
+ * counters after each snapshot, returning a {@link TimeSeriesPoint}.
+ */
 final class WindowTracker {
   private final AtomicLong windowLatencyMin = new AtomicLong(Long.MAX_VALUE);
   private final AtomicLong windowLatencyMax = new AtomicLong(0);

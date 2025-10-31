@@ -1,29 +1,25 @@
-package com.mk.fx.qa.load.execution.cfg;
+package com.mk.fx.qa.load.execution.resource;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.http.HttpStatus;
+import com.mk.fx.qa.load.execution.cfg.ErrorResponse;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
-/** Global exception handler for REST controllers. */
+@Slf4j
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
-  private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
-
   @ExceptionHandler(IllegalArgumentException.class)
-  public ResponseEntity<com.mk.fx.qa.load.execution.cfg.ErrorResponse> handleIllegalArgument(
-      IllegalArgumentException ex) {
-    log.warn("Bad request: {}", ex.getMessage());
-    return ResponseEntity.badRequest().body(new ErrorResponse("Invalid request", ex.getMessage()));
+  public ResponseEntity<ErrorResponse> handleIllegalArgument(IllegalArgumentException ex) {
+    log.warn("Invalid argument: {}", ex.getMessage());
+    return ResponseEntity.badRequest().body(new ErrorResponse("Invalid Argument", ex.getMessage()));
   }
 
   @ExceptionHandler(Exception.class)
-  public ResponseEntity<ErrorResponse> handleUnexpected(Exception ex) {
-    log.error("Unexpected error", ex);
-    return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-        .body(new ErrorResponse("Internal error", "An unexpected error occurred"));
+  public ResponseEntity<ErrorResponse> handleGeneric(Exception ex) {
+    log.error("Unhandled exception", ex);
+    return ResponseEntity.internalServerError()
+        .body(new ErrorResponse("Server Error", ex.getMessage()));
   }
 }

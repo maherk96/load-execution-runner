@@ -1,5 +1,9 @@
 package com.mk.fx.qa.load.execution.metrics;
 
+/**
+ * Internal structure capturing completion context for a run: cancellation flag, hold expiration and
+ * user completion counts. Used by the report builder to determine end reason messaging.
+ */
 final class CompletionInfo {
   final boolean cancelled;
   final Boolean holdExpired; // null when not applicable
