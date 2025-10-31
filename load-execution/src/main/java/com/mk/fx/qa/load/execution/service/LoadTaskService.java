@@ -42,6 +42,23 @@ import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
+/**
+ * Central service responsible for submitting, executing, tracking and cancelling load tasks.
+ *
+ * <p>Responsibilities:
+ * - Accepts {@link com.mk.fx.qa.load.execution.model.LoadTask} submissions and routes execution to a
+ *   matching {@link LoadTaskProcessor} based on {@link com.mk.fx.qa.load.execution.model.TaskType}.
+ * - Tracks task lifecycle (QUEUED → PROCESSING → COMPLETED/ERROR/CANCELLED) and exposes read-only
+ *   status, history and summary views.
+ * - Maintains lightweight, in-memory metrics such as success rate, average processing duration and
+ *   counters for completed/failed/cancelled tasks.
+ * - Supports cooperative cancellation for queued and running tasks.
+ *
+ * <p>Thread-safety: This service is designed to be used concurrently. It relies on
+ * {@link java.util.concurrent.ConcurrentHashMap}, {@link java.util.concurrent.atomic} primitives and
+ * a bounded worker pool to ensure safe updates to internal state. Public read methods return
+ * snapshots computed from the current state without external synchronization.
+ */
 @Slf4j
 @Service
 public class LoadTaskService {
@@ -59,6 +76,14 @@ public class LoadTaskService {
   private final AtomicLong totalCancelled;
   private final AtomicLong cumulativeProcessingTime;
 
+  /**
+   * Creates the service with the provided configuration and available processors.
+   *
+   * @param properties task processing configuration (e.g., pool size, history size)
+   * @param processors concrete processors capable of executing supported task types
+   * @throws IllegalStateException if more than one processor is provided for the same task type
+   * @throws NullPointerException if any processor or its declared type is null
+   */
   public LoadTaskService(TaskProcessingCfg properties, List<LoadTaskProcessor> processors) {
     this.properties = properties;
     this.executor = createExecutor(properties.getConcurrency());
@@ -99,6 +124,9 @@ public class LoadTaskService {
     return pool;
   }
 
+  /**
+   * Builds an immutable map of task type to processor, validating uniqueness.
+   */
   private Map<TaskType, LoadTaskProcessor> initialiseProcessors(
       List<LoadTaskProcessor> availableProcessors) {
     Map<TaskType, LoadTaskProcessor> map = new EnumMap<>(TaskType.class);
@@ -115,6 +143,17 @@ public class LoadTaskService {
     return Map.copyOf(map);
   }
 
+  /**
+   * Submits a task for asynchronous execution.
+   *
+   * <p>If the service is not accepting tasks (e.g., after shutdown), an empty Optional is
+   * returned. If no processor exists for the task type, an error outcome is returned. Otherwise
+   * the task is queued and executed on the worker pool.
+   *
+   * @param task domain task to execute
+   * @return empty if not accepting new tasks, otherwise a submission outcome reflecting the
+   *     snapshot status at submission time
+   */
   public Optional<TaskSubmissionOutcome> submitTask(LoadTask task) {
     if (!acceptingTasks.get()) {
       return Optional.empty();
@@ -224,6 +263,7 @@ public class LoadTaskService {
     return request;
   }
 
+  /** Returns the current status for a given task id, if present. */
   public Optional<TaskStatusResponse> getTaskStatus(UUID taskId) {
     TaskRecord record = taskRecords.get(taskId);
     if (record == null) {
@@ -232,6 +272,7 @@ public class LoadTaskService {
     return Optional.of(toStatusResponse(record));
   }
 
+  /** Returns a summary list of tasks filtered by the provided status. */
   public List<TaskSummaryResponse> getTasksByStatus(TaskStatus status) {
     List<TaskSummaryResponse> results = new ArrayList<>();
     for (TaskRecord record : taskRecords.values()) {
@@ -247,6 +288,7 @@ public class LoadTaskService {
     return results;
   }
 
+  /** Returns a snapshot of the most recent task executions up to configured history size. */
   public List<TaskHistoryEntry> getTaskHistory() {
     List<TaskHistoryEntry> snapshot = new ArrayList<>();
     for (TaskRecord record : taskHistory) {
@@ -263,12 +305,14 @@ public class LoadTaskService {
     return snapshot;
   }
 
+  /** Returns the current size of the pending queue, active worker count and acceptance flag. */
   public QueueStatusResponse getQueueStatus() {
     var pending = executor.getQueue().size();
     var active = activeTaskCount.get();
     return new QueueStatusResponse(pending, active, acceptingTasks.get());
   }
 
+  /** Returns aggregate metrics across all tasks processed by this service instance. */
   public TaskMetricsResponse getMetrics() {
     var completed = totalCompleted.get();
     var failed = totalFailed.get();
@@ -281,6 +325,21 @@ public class LoadTaskService {
         completed, failed, cancelled, avgProcessing, successRate, processedForSuccessRate);
   }
 
+  /**
+   * Attempts to cancel the specified task.
+   *
+   * <p>Behaviour:
+   * - If the task is queued and has not started, it is immediately marked as CANCELLED.
+   * - If the task is running, a cooperative cancellation is requested via interrupt; the method
+   *   returns {@link CancellationResult.CancellationState#CANCELLATION_REQUESTED}. The executing
+   *   processor should honour interrupts and the service will mark the task CANCELLED when the
+   *   worker observes the interruption.
+   * - If the task does not exist or has already reached a terminal state, the result reflects that
+   *   accordingly.
+   *
+   * @param taskId id of the task to cancel
+   * @return result describing the cancellation outcome and current task status
+   */
   public CancellationResult cancelTask(UUID taskId) {
     var record = taskRecords.get(taskId);
     if (record == null) {
@@ -333,10 +392,16 @@ public class LoadTaskService {
     return CancellationResult.notCancellable(record.getStatus());
   }
 
+  /** Returns the set of supported task types exposed by the registered processors. */
   public Set<String> getSupportedTaskTypes() {
     return processors.keySet().stream().map(TaskType::name).collect(Collectors.toUnmodifiableSet());
   }
 
+  /**
+   * Initiates a graceful shutdown: flips acceptance flag and shuts down the executor.
+   *
+   * <p>Currently running tasks are allowed to complete unless cancelled explicitly.
+   */
   public void shutdown() {
     if (acceptingTasks.compareAndSet(true, false)) {
       executor.shutdown();
@@ -348,6 +413,7 @@ public class LoadTaskService {
     shutdown();
   }
 
+  /** Simple health indicator for external liveness checks. */
   public boolean isHealthy() {
     return acceptingTasks.get() && !executor.isShutdown();
   }
@@ -372,6 +438,7 @@ public class LoadTaskService {
     return responses;
   }
 
+  /** Describes the outcome of a cancellation attempt for a task. */
   @Getter
   public static class CancellationResult {
     public enum CancellationState {
@@ -389,18 +456,22 @@ public class LoadTaskService {
       this.taskStatus = taskStatus;
     }
 
+    /** Creates a result representing an immediate cancellation. */
     public static CancellationResult cancelled(TaskStatus status) {
       return new CancellationResult(CancellationState.CANCELLED, status);
     }
 
+    /** Creates a result representing a cooperative cancellation request. */
     public static CancellationResult cancellationRequested(TaskStatus status) {
       return new CancellationResult(CancellationState.CANCELLATION_REQUESTED, status);
     }
 
+    /** Creates a result indicating the task id was not found. */
     public static CancellationResult notFound() {
       return new CancellationResult(CancellationState.NOT_FOUND, null);
     }
 
+    /** Creates a result indicating the task cannot be cancelled in its current state. */
     public static CancellationResult notCancellable(TaskStatus status) {
       return new CancellationResult(CancellationState.NOT_CANCELLABLE, status);
     }
