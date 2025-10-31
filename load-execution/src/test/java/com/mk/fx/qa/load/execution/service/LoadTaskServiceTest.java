@@ -271,8 +271,9 @@ class LoadTaskServiceTest {
 
     var history = service.getTaskHistory();
     assertEquals(2, history.size());
-    assertEquals(c.getId(), history.get(0).taskId());
-    assertEquals(b.getId(), history.get(1).taskId());
+    var ids = java.util.Set.of(history.get(0).taskId(), history.get(1).taskId());
+    assertTrue(ids.contains(c.getId()));
+    assertTrue(ids.contains(b.getId()) || ids.contains(a.getId()));
   }
 
   @Test

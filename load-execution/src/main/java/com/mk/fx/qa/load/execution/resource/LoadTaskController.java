@@ -41,7 +41,7 @@ public class LoadTaskController {
   @PostMapping
   public ResponseEntity<TaskSubmissionResponse> submitTask(
       @Valid @RequestBody TaskSubmissionRequest request) {
-    log.info("Received load task submission: {}", request);
+    log.info("Received load task submission type={}", request.getTaskType());
     LoadTask loadTask = taskMapper.toDomain(request);
     Optional<TaskSubmissionOutcome> outcomeOpt = loadTaskService.submitTask(loadTask);
 
@@ -110,8 +110,11 @@ public class LoadTaskController {
       return ResponseEntity.ok(loadTaskService.getTasksByStatus(taskStatus));
     } catch (IllegalArgumentException ex) {
       log.warn("Invalid status filter: {}", status);
+      String allowed = Arrays.toString(TaskStatus.values());
       return responseFactory.error(
-          HttpStatus.BAD_REQUEST, "Invalid Status", "Unrecognized status: " + status);
+          HttpStatus.BAD_REQUEST,
+          "Invalid Status",
+          "Unrecognized status: " + status + ". Allowed: " + allowed);
     }
   }
 
@@ -180,7 +183,7 @@ public class LoadTaskController {
   }
 
   @Operation(summary = "Health check", description = "Verifies service health.")
-  @GetMapping("/healthz")
+  @GetMapping("/healthy")
   public ResponseEntity<HealthResponse> health() {
     boolean healthy = loadTaskService.isHealthy();
     log.debug("Health check: {}", healthy ? "UP" : "DOWN");
