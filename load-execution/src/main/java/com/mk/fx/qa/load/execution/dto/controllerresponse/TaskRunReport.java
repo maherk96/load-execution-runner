@@ -27,6 +27,10 @@ public class TaskRunReport {
 
   public List<TimeSeriesEntry> timeSeriesEntries;
   public ProtocolDetails protocolDetails;
+  public TestCompletion testCompletion;
+  public CapacityAnalysis capacityAnalysis;
+  public UserCompletionAnalysis userCompletionAnalysis;
+  public Summary summary;
 
   public static class EnvInfo {
     public String branch;
@@ -116,6 +120,10 @@ public class TaskRunReport {
     public long failure;
     public Latency latency;
     public Map<String, Long> statusBreakdown;
+    public Boolean outlierDetected;
+    public String outlierInfo;
+    public java.time.Instant outlierTimestamp;
+    public Integer likelyAffectedUser;
   }
 
   public static class Latency {
@@ -125,4 +133,43 @@ public class TaskRunReport {
     public Long p95;
     public Long p99;
   }
+
+  public static class TestCompletion {
+    public String reason; // ALL_USERS_FINISHED, HOLD_EXPIRED, CANCELLED, ERROR
+    public Double expectedDurationSec;
+    public Double actualDurationSec;
+    public Integer percentComplete; // 0-100
+    public String message;
+  }
+
+  public static class CapacityAnalysis {
+    public Double targetRps;
+    public Double achievedRps;
+    public Double utilizationPercent;
+    public String assessment; // UNDER_UTILIZED, OPTIMAL, OVER_UTILIZED
+    public String recommendation;
+  }
+
+  public static class UserCompletionAnalysis {
+    public UserCompletionSummary fastest;
+    public UserCompletionSummary slowest;
+    public Double avgCompletionTimeMs;
+    public Double stdDevMs;
+    public String varianceAssessment; // LOW, MODERATE, HIGH
+    public String insight;
+  }
+
+  public static class UserCompletionSummary {
+    public Integer userId;
+    public Long completionTimeMs;
+    public Integer iterationsCompleted;
+  }
+
+  public static class Summary {
+    public String status; // SUCCESS, PARTIAL_SUCCESS, FAILED
+    public String message;
+    public List<String> highlights;
+    public List<String> concerns;
+  }
+
 }

@@ -11,13 +11,14 @@ public class RestProtocolMetrics implements ProtocolMetricsProvider {
 
   private final Map<String, EndpointStats> endpointStats = new ConcurrentHashMap<>();
 
-  public void recordSuccess(String method, String path, long latencyMs, int statusCode) {
+  public void recordSuccess(
+      String method, String path, long latencyMs, int statusCode, Integer userId) {
     EndpointStats s =
         endpointStats.computeIfAbsent(key(method, path), k -> new EndpointStats(method, path));
-    s.onSuccess(latencyMs, statusCode);
+    s.onSuccess(latencyMs, statusCode, userId);
   }
 
-  public String recordHttpFailure(int statusCode, String method, String path) {
+  public String recordHttpFailure(int statusCode, String method, String path, Integer userId) {
     EndpointStats s =
         endpointStats.computeIfAbsent(key(method, path), k -> new EndpointStats(method, path));
     String category = httpCategory(statusCode);
@@ -67,6 +68,15 @@ public class RestProtocolMetrics implements ProtocolMetricsProvider {
       l.p95 = s.p95Ms();
       es.latency = l;
       es.statusBreakdown = s.statusBreakdownSnapshot();
+
+      if (l.p95 != null && l.max > l.p95 * 5) {
+        es.outlierDetected = true;
+        es.outlierInfo = "Detected slow requests: max " + l.max + "ms vs P95 " + l.p95 + "ms";
+        es.outlierTimestamp = s.maxLatencyAt;
+        es.likelyAffectedUser = s.maxLatencyUser;
+      } else {
+        es.outlierDetected = false;
+      }
       list.add(es);
     }
 
@@ -84,6 +94,8 @@ public class RestProtocolMetrics implements ProtocolMetricsProvider {
     final AtomicLong sumLatency = new AtomicLong();
     final AtomicLong minLatency = new AtomicLong(Long.MAX_VALUE);
     final AtomicLong maxLatency = new AtomicLong(0);
+    volatile java.time.Instant maxLatencyAt;
+    volatile Integer maxLatencyUser;
     final Reservoir reservoir = new Reservoir(100000);
     final Map<String, AtomicLong> statusBreakdown = new ConcurrentHashMap<>();
 
@@ -92,13 +104,21 @@ public class RestProtocolMetrics implements ProtocolMetricsProvider {
       this.path = path;
     }
 
-    private void onSuccess(long latencyMs, int statusCode) {
+    private void onSuccess(long latencyMs, int statusCode, Integer userId) {
       total.incrementAndGet();
       success.incrementAndGet();
       long v = Math.max(0, latencyMs);
       sumLatency.addAndGet(v);
       minLatency.accumulateAndGet(v, Math::min);
-      maxLatency.accumulateAndGet(v, Math::max);
+      long prev;
+      do {
+        prev = maxLatency.get();
+        if (v <= prev) break;
+      } while (!maxLatency.compareAndSet(prev, v));
+      if (v > prev) {
+        maxLatencyAt = java.time.Instant.now();
+        maxLatencyUser = userId;
+      }
       reservoir.add(v);
       String codeGroup =
           statusCode >= 200 && statusCode < 600

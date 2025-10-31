@@ -168,13 +168,22 @@ public class RestLoadTaskProcessor implements LoadTaskProcessor {
               () -> {
                 try {
                   executeAllScenarios(
-                      client, testSpec.getScenarios(), thinkTime, cancelled, metrics, restMetrics);
+                      client,
+                      testSpec.getScenarios(),
+                      thinkTime,
+                      cancelled,
+                      metrics,
+                      restMetrics,
+                      null);
                 } catch (InterruptedException e) {
                   Thread.currentThread().interrupt();
                 }
               });
     } finally {
       metrics.stopAndSummarise();
+      // completion context for report
+      boolean wasCancelled = result != null && result.cancelled();
+      metrics.setCompletionContext(wasCancelled, null, null, null);
       metricsRegistry.complete(taskId, metrics.snapshotNow());
       var report = metrics.buildReport();
       metricsRegistry.saveReport(taskId, report);
@@ -252,13 +261,23 @@ public class RestLoadTaskProcessor implements LoadTaskProcessor {
                 }
                 metrics.recordUserProgress(userIndex, iteration);
                 executeAllScenarios(
-                    client, testSpec.getScenarios(), thinkTime, cancelled, metrics, restMetrics);
+                    client,
+                    testSpec.getScenarios(),
+                    thinkTime,
+                    cancelled,
+                    metrics,
+                    restMetrics,
+                    userIndex);
                 if (iteration == (iterations - 1)) {
                   metrics.recordUserCompleted(userIndex, iterations);
                 }
               });
     } finally {
       metrics.stopAndSummarise();
+      if (result != null) {
+        metrics.setCompletionContext(
+            result.cancelled(), result.holdExpired(), result.totalUsers(), result.completedUsers());
+      }
       metricsRegistry.complete(taskId, metrics.snapshotNow());
       var report = metrics.buildReport();
       metricsRegistry.saveReport(taskId, report);
@@ -294,7 +313,8 @@ public class RestLoadTaskProcessor implements LoadTaskProcessor {
       ThinkTimeStrategy thinkTime,
       AtomicBoolean cancelled,
       LoadMetrics metrics,
-      RestProtocolMetrics restMetrics)
+      RestProtocolMetrics restMetrics,
+      Integer userIndex)
       throws InterruptedException {
     if (scenarios == null || scenarios.isEmpty()) {
       throw new IllegalArgumentException("testSpec.scenarios must contain at least one scenario");
@@ -313,7 +333,10 @@ public class RestLoadTaskProcessor implements LoadTaskProcessor {
           if (response.getStatusCode() >= 400) {
             String category =
                 restMetrics.recordHttpFailure(
-                    response.getStatusCode(), request.getMethod().name(), request.getPath());
+                    response.getStatusCode(),
+                    request.getMethod().name(),
+                    request.getPath(),
+                    userIndex);
             metrics.recordFailure(category, response.getResponseTimeMs());
           } else {
             metrics.recordRequestSuccess(response.getResponseTimeMs());
@@ -321,7 +344,8 @@ public class RestLoadTaskProcessor implements LoadTaskProcessor {
                 request.getMethod().name(),
                 request.getPath(),
                 response.getResponseTimeMs(),
-                response.getStatusCode());
+                response.getStatusCode(),
+                userIndex);
           }
         } catch (RuntimeException ex) {
           metrics.recordRequestFailure(ex);

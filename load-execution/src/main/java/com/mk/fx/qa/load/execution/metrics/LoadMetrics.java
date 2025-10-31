@@ -36,6 +36,7 @@ public class LoadMetrics {
   private ScheduledExecutorService snapshots;
   private final List<TimeSeriesPoint> timeSeries = new CopyOnWriteArrayList<>();
   private volatile Instant lastSnapshotAt = startedAt;
+  private volatile CompletionInfo completionInfo;
 
   public Map<Integer, Integer> currentUserIterations() {
     return users.currentIterations();
@@ -69,6 +70,11 @@ public class LoadMetrics {
       }
     }
     logFinalSummary();
+  }
+
+  public void setCompletionContext(
+      boolean cancelled, Boolean holdExpired, Integer totalUsers, Integer completedUsers) {
+    this.completionInfo = new CompletionInfo(cancelled, holdExpired, totalUsers, completedUsers);
   }
 
   public void recordUserStarted(int userIndex) {
@@ -318,7 +324,8 @@ public class LoadMetrics {
             users,
             errorTracker,
             timeSeries,
-            protocolProviders);
+            protocolProviders,
+            completionInfo);
   }
 
   public Map<String, Long> errorBreakdown() {
