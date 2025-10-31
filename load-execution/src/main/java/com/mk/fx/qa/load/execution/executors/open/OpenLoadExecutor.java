@@ -15,6 +15,11 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BooleanSupplier;
 import lombok.extern.slf4j.Slf4j;
 
+/**
+ * Executes an "open" load model where requests are launched at a target arrival rate up to a
+ * maximum concurrency. Uses a scheduled executor to fire iterations at fixed intervals while
+ * respecting cancellation and total duration limits.
+ */
 @Slf4j
 public final class OpenLoadExecutor {
 
@@ -22,6 +27,16 @@ public final class OpenLoadExecutor {
     throw new UnsupportedOperationException("OpenLoadExecutor cannot be instantiated");
   }
 
+  /**
+   * Runs an open model execution.
+   *
+   * @param taskId unique task identifier used for thread names and logs
+   * @param parameters open model parameters (arrival rate, max concurrency, duration)
+   * @param cancellationRequested supplier checked for cooperative cancellation
+   * @param iterationTask work to execute per launched request
+   * @return result including launched/completed counts and cancellation flag
+   * @throws InterruptedException if the calling thread is interrupted while coordinating
+   */
   public static OpenLoadResult execute(
       UUID taskId,
       OpenLoadParameters parameters,
@@ -109,6 +124,7 @@ public final class OpenLoadExecutor {
     return new OpenLoadResult(launchedTasks.get(), completedTasks.get(), cancelled.get());
   }
 
+  /** Validates mandatory inputs for an open execution. */
   private static void validateTask(
       UUID taskId,
       OpenLoadParameters parameters,
@@ -120,6 +136,7 @@ public final class OpenLoadExecutor {
     Objects.requireNonNull(iterationTask, "iterationTask");
   }
 
+  /** Executes a single iteration, signalling cancellation on errors and releasing permits. */
   private static void executeIteration(
       Runnable iterationTask,
       Semaphore permits,
@@ -136,6 +153,7 @@ public final class OpenLoadExecutor {
     }
   }
 
+  /** Returns true if current thread is interrupted or external cancellation is signalled. */
   private static boolean shouldStop(BooleanSupplier cancellationRequested) {
     return Thread.currentThread().isInterrupted() || cancellationRequested.getAsBoolean();
   }

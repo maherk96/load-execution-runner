@@ -61,7 +61,7 @@ public class RestProtocolMetrics implements ProtocolMetricsProvider {
       es.failure = s.failure.get();
 
       TaskRunReport.Latency l = new TaskRunReport.Latency();
-      l.min = s.minLatency.get() == Long.MAX_VALUE ? null : s.minLatency.get();
+      l.min = s.minLatency.get() == Long.MAX_VALUE ? 0 : s.minLatency.get();
       l.max = s.maxLatency.get();
       l.avg = s.avgMs();
       l.p99 = s.p99Ms();

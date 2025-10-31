@@ -16,6 +16,14 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BooleanSupplier;
 import lombok.extern.slf4j.Slf4j;
 
+/**
+ * Executes a "closed" load model where a fixed number of virtual users each perform a configured
+ * number of iterations, with optional warmup/ramp-up/hold phases. Responsible for managing the
+ * user thread pool, respecting cancellation/hold expiration, and reporting completion stats.
+ *
+ * <p>Threading: Creates a fixed thread pool sized to the number of users. Each user runs its
+ * iterations sequentially on its thread. Ramp-up is achieved by delaying user submission.
+ */
 @Slf4j
 public final class ClosedLoadExecutor {
 
@@ -25,6 +33,16 @@ public final class ClosedLoadExecutor {
     throw new UnsupportedOperationException("ClosedLoadExecutor cannot be instantiated");
   }
 
+  /**
+   * Runs a closed model execution.
+   *
+   * @param taskId unique task identifier used for thread names and logs
+   * @param parameters execution parameters (users, iterations, warmup, ramp-up, hold)
+   * @param cancellationRequested supplier checked for cooperative cancellation
+   * @param iterationRunner callback invoked for each user iteration
+   * @return summary result including total/completed users and termination cause flags
+   * @throws Exception if interrupted during coordination or if the iteration runner throws
+   */
   public static ClosedLoadResult execute(
       UUID taskId,
       ClosedLoadParameters parameters,
@@ -118,6 +136,7 @@ public final class ClosedLoadExecutor {
         users, completedUsers.get(), cancellationObserved.get(), holdExpired.get());
   }
 
+  /** Validates mandatory inputs for a closed execution. */
   private static void validateTask(
       UUID taskId,
       ClosedLoadParameters parameters,
@@ -129,6 +148,9 @@ public final class ClosedLoadExecutor {
     Objects.requireNonNull(iterationRunner, "iterationRunner");
   }
 
+  /**
+   * Executes all iterations for a single virtual user, honouring cancellation and hold expiry.
+   */
   private static void runVirtualUser(
       UUID taskId,
       int totalUsers,
@@ -205,6 +227,7 @@ public final class ClosedLoadExecutor {
         totalUsers);
   }
 
+  /** Waits for all submitted users to complete or cancels them if stop conditions arise. */
   private static void waitForUsers(
       List<Future<?>> futures,
       long holdDeadline,
@@ -237,6 +260,7 @@ public final class ClosedLoadExecutor {
     }
   }
 
+  /** Returns true if current thread is interrupted or external cancellation is signalled. */
   private static boolean shouldStop(BooleanSupplier cancelled, AtomicBoolean cancellationObserved) {
     var requested = Thread.currentThread().isInterrupted() || cancelled.getAsBoolean();
     if (requested) {
@@ -245,10 +269,12 @@ public final class ClosedLoadExecutor {
     return requested;
   }
 
+  /** Returns true if hold deadline has passed. */
   private static boolean isHoldExpired(long holdDeadline) {
     return System.nanoTime() >= holdDeadline;
   }
 
+  /** Computes inter-user submission delay during ramp-up. */
   private static double computeRampIntervalMillis(int users, Duration rampUp) {
     if (users <= 1 || rampUp.isZero()) {
       return 0;
@@ -256,6 +282,7 @@ public final class ClosedLoadExecutor {
     return rampUp.toMillis() / (double) (users - 1);
   }
 
+  /** Sleeps for the requested duration in chunks, checking for cancellation between chunks. */
   private static void sleepWithCancellation(
       Duration duration, BooleanSupplier cancellationRequested, AtomicBoolean cancellationObserved)
       throws InterruptedException {

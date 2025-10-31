@@ -186,6 +186,8 @@ class LoadMetricsTest {
     LoadMetrics m = new LoadMetrics(closedConfig());
     // Minimal activity
     m.recordRequestSuccess(10);
+    // Indicate hold expired for CLOSED model
+    m.setCompletionContext(false, true, 2, 0);
 
     TaskRunReport report = m.buildReport();
     assertNotNull(report.config);
