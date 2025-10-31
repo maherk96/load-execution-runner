@@ -6,8 +6,8 @@ import java.util.Random;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * Thread-safe fixed-size reservoir for approximate percentile estimation.
- * Implements classic reservoir sampling (Algorithm R).
+ * Thread-safe fixed-size reservoir for approximate percentile estimation. Implements classic
+ * reservoir sampling (Algorithm R).
  */
 public final class Reservoir {
   private final int capacity;

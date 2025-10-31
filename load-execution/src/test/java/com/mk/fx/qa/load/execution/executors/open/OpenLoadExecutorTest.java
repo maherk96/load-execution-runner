@@ -16,7 +16,9 @@ class OpenLoadExecutorTest {
     return new OpenLoadParameters(rate, maxConc, dur);
   }
 
-  private static BooleanSupplier neverCancel() { return () -> false; }
+  private static BooleanSupplier neverCancel() {
+    return () -> false;
+  }
 
   @Test
   void executesWithinDuration_respectsConcurrency_andCounts() throws Exception {
@@ -124,10 +126,16 @@ class OpenLoadExecutorTest {
   @Test
   void validateTask_nullInputs_throwNpe() {
     var p = params(1.0, 1, Duration.ofMillis(10));
-    assertThrows(NullPointerException.class, () -> OpenLoadExecutor.execute(null, p, () -> false, () -> {}));
-    assertThrows(NullPointerException.class, () -> OpenLoadExecutor.execute(UUID.randomUUID(), null, () -> false, () -> {}));
-    assertThrows(NullPointerException.class, () -> OpenLoadExecutor.execute(UUID.randomUUID(), p, null, () -> {}));
-    assertThrows(NullPointerException.class, () -> OpenLoadExecutor.execute(UUID.randomUUID(), p, () -> false, null));
+    assertThrows(
+        NullPointerException.class, () -> OpenLoadExecutor.execute(null, p, () -> false, () -> {}));
+    assertThrows(
+        NullPointerException.class,
+        () -> OpenLoadExecutor.execute(UUID.randomUUID(), null, () -> false, () -> {}));
+    assertThrows(
+        NullPointerException.class,
+        () -> OpenLoadExecutor.execute(UUID.randomUUID(), p, null, () -> {}));
+    assertThrows(
+        NullPointerException.class,
+        () -> OpenLoadExecutor.execute(UUID.randomUUID(), p, () -> false, null));
   }
 }
-

@@ -6,7 +6,6 @@ import com.mk.fx.qa.load.execution.dto.controllerresponse.TaskRunReport;
 import com.mk.fx.qa.load.execution.model.LoadModelType;
 import java.time.Duration;
 import java.util.List;
-import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 class LoadMetricsTest {

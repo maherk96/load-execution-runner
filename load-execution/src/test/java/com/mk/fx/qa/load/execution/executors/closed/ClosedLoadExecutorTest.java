@@ -4,8 +4,6 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import java.time.Duration;
 import java.util.UUID;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BooleanSupplier;
@@ -13,11 +11,14 @@ import org.junit.jupiter.api.Test;
 
 class ClosedLoadExecutorTest {
 
-  private static ClosedLoadParameters params(int users, int iterations, Duration warm, Duration ramp, Duration hold) {
+  private static ClosedLoadParameters params(
+      int users, int iterations, Duration warm, Duration ramp, Duration hold) {
     return new ClosedLoadParameters(users, iterations, warm, ramp, hold);
   }
 
-  private static BooleanSupplier neverCancel() { return () -> false; }
+  private static BooleanSupplier neverCancel() {
+    return () -> false;
+  }
 
   @Test
   void executesAllUsersComplete_whenSufficientHoldAndNoCancel() throws Exception {
@@ -26,8 +27,7 @@ class ClosedLoadExecutorTest {
     var runnerCalls = new AtomicInteger();
     VirtualUserIterationRunner runner = (u, i) -> runnerCalls.incrementAndGet();
 
-    ClosedLoadResult result =
-        ClosedLoadExecutor.execute(taskId, p, neverCancel(), runner);
+    ClosedLoadResult result = ClosedLoadExecutor.execute(taskId, p, neverCancel(), runner);
 
     assertEquals(3, result.totalUsers());
     assertEquals(3, result.completedUsers());
@@ -53,8 +53,7 @@ class ClosedLoadExecutorTest {
     UUID taskId = UUID.randomUUID();
     // Short hold, longer ramp so not all users start
     var p = params(5, 5, Duration.ZERO, Duration.ofMillis(500), Duration.ofMillis(50));
-    ClosedLoadResult result =
-        ClosedLoadExecutor.execute(taskId, p, neverCancel(), (u, i) -> {});
+    ClosedLoadResult result = ClosedLoadExecutor.execute(taskId, p, neverCancel(), (u, i) -> {});
 
     assertTrue(result.holdExpired());
     assertFalse(result.cancelled());
@@ -78,8 +77,7 @@ class ClosedLoadExecutorTest {
           }
         };
 
-    ClosedLoadResult result =
-        ClosedLoadExecutor.execute(taskId, p, cancel::get, runner);
+    ClosedLoadResult result = ClosedLoadExecutor.execute(taskId, p, cancel::get, runner);
 
     assertTrue(result.cancelled());
     // Not all users should complete 1000 iterations
@@ -95,8 +93,7 @@ class ClosedLoadExecutorTest {
           if (u == 1 && i == 0) throw new RuntimeException("boom");
         };
 
-    ClosedLoadResult result =
-        ClosedLoadExecutor.execute(taskId, p, neverCancel(), runner);
+    ClosedLoadResult result = ClosedLoadExecutor.execute(taskId, p, neverCancel(), runner);
 
     assertEquals(3, result.totalUsers());
     assertEquals(2, result.completedUsers());
@@ -107,10 +104,18 @@ class ClosedLoadExecutorTest {
   @Test
   void validateTask_nullInputs_throwNpe() {
     var p = params(1, 1, Duration.ZERO, Duration.ZERO, Duration.ZERO);
-    assertThrows(NullPointerException.class, () -> ClosedLoadExecutor.execute(null, p, () -> false, (u, i) -> {}));
-    assertThrows(NullPointerException.class, () -> ClosedLoadExecutor.execute(UUID.randomUUID(), null, () -> false, (u, i) -> {}));
-    assertThrows(NullPointerException.class, () -> ClosedLoadExecutor.execute(UUID.randomUUID(), p, null, (u, i) -> {}));
-    assertThrows(NullPointerException.class, () -> ClosedLoadExecutor.execute(UUID.randomUUID(), p, () -> false, null));
+    assertThrows(
+        NullPointerException.class,
+        () -> ClosedLoadExecutor.execute(null, p, () -> false, (u, i) -> {}));
+    assertThrows(
+        NullPointerException.class,
+        () -> ClosedLoadExecutor.execute(UUID.randomUUID(), null, () -> false, (u, i) -> {}));
+    assertThrows(
+        NullPointerException.class,
+        () -> ClosedLoadExecutor.execute(UUID.randomUUID(), p, null, (u, i) -> {}));
+    assertThrows(
+        NullPointerException.class,
+        () -> ClosedLoadExecutor.execute(UUID.randomUUID(), p, () -> false, null));
   }
 
   @Test
@@ -138,13 +143,12 @@ class ClosedLoadExecutorTest {
           if (i == 0) firstIterationAt[u] = System.nanoTime();
         };
 
-    ClosedLoadResult result =
-        ClosedLoadExecutor.execute(taskId, p, neverCancel(), runner);
+    ClosedLoadResult result = ClosedLoadExecutor.execute(taskId, p, neverCancel(), runner);
 
     assertEquals(users, result.completedUsers());
-    // Ensure ordering and non-zero deltas (indicative of ramp sleeps), while avoiding brittle thresholds
+    // Ensure ordering and non-zero deltas (indicative of ramp sleeps), while avoiding brittle
+    // thresholds
     assertTrue(firstIterationAt[1] == 0 || firstIterationAt[1] >= firstIterationAt[0]);
     assertTrue(firstIterationAt[2] == 0 || firstIterationAt[2] >= firstIterationAt[1]);
   }
 }
-

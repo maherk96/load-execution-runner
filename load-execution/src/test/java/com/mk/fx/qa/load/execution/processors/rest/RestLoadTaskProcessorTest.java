@@ -95,7 +95,8 @@ class RestLoadTaskProcessorTest {
 
     // Use an unreachable port to force connection failure
     String badBaseUrl = "http://127.0.0.1:1";
-    TaskSubmissionRequest req = buildOpenRequest(taskId, badBaseUrl, List.of("/ok"), 5.0, 2, "200ms");
+    TaskSubmissionRequest req =
+        buildOpenRequest(taskId, badBaseUrl, List.of("/ok"), 5.0, 2, "200ms");
 
     processor.execute(req);
 
@@ -130,7 +131,9 @@ class RestLoadTaskProcessorTest {
     Map<String, Object> testSpec = new HashMap<>();
     // globalConfig with no baseUrl
     testSpec.put("globalConfig", Map.of());
-    testSpec.put("scenarios", List.of(Map.of("name", "s1", "requests", List.of(Map.of("method", "GET", "path", "/ok")))));
+    testSpec.put(
+        "scenarios",
+        List.of(Map.of("name", "s1", "requests", List.of(Map.of("method", "GET", "path", "/ok")))));
     Map<String, Object> exec = new HashMap<>();
     exec.put("thinkTime", Map.of("type", "NONE"));
     exec.put("loadModel", Map.of("type", "CLOSED", "users", 1, "iterations", 1));
@@ -145,7 +148,8 @@ class RestLoadTaskProcessorTest {
     assertThrows(IllegalArgumentException.class, () -> processor.execute(req));
   }
 
-  private TaskSubmissionRequest buildClosedRequest(UUID taskId, String baseUrl, List<String> paths) {
+  private TaskSubmissionRequest buildClosedRequest(
+      UUID taskId, String baseUrl, List<String> paths) {
     Map<String, Object> data = new HashMap<>();
     Map<String, Object> testSpec = new HashMap<>();
     testSpec.put("globalConfig", Map.of("baseUrl", baseUrl));
@@ -176,7 +180,12 @@ class RestLoadTaskProcessorTest {
   }
 
   private TaskSubmissionRequest buildOpenRequest(
-      UUID taskId, String baseUrl, List<String> paths, double rate, int maxConc, String durationIso) {
+      UUID taskId,
+      String baseUrl,
+      List<String> paths,
+      double rate,
+      int maxConc,
+      String durationIso) {
     Map<String, Object> data = new HashMap<>();
     Map<String, Object> testSpec = new HashMap<>();
     testSpec.put("globalConfig", Map.of("baseUrl", baseUrl));

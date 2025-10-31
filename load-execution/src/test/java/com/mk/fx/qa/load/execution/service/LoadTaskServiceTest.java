@@ -280,7 +280,8 @@ class LoadTaskServiceTest {
     // Keep acceptingTasks = true but shutdown the underlying executor to force rejection
     CountingProcessor processor = new CountingProcessor(TaskType.REST);
     LoadTaskService service = new LoadTaskService(cfg(1, 10), List.of(processor));
-    var executor = getPrivateField(service, "executor", java.util.concurrent.ThreadPoolExecutor.class);
+    var executor =
+        getPrivateField(service, "executor", java.util.concurrent.ThreadPoolExecutor.class);
     executor.shutdown();
 
     var outcomeOpt = service.submitTask(newTask(TaskType.REST));
@@ -297,8 +298,11 @@ class LoadTaskServiceTest {
 
     // Occupy worker so next task is queued
     BlockingProcessor blocker = new BlockingProcessor(TaskType.REST);
-    // Replace processor map to include both types via reflection – maintain REST mapping to blocker for first task
-    java.util.Map<com.mk.fx.qa.load.execution.model.TaskType, com.mk.fx.qa.load.execution.processors.LoadTaskProcessor>
+    // Replace processor map to include both types via reflection – maintain REST mapping to blocker
+    // for first task
+    java.util.Map<
+            com.mk.fx.qa.load.execution.model.TaskType,
+            com.mk.fx.qa.load.execution.processors.LoadTaskProcessor>
         map = new java.util.EnumMap<>(TaskType.class);
     map.put(TaskType.REST, blocker);
     setPrivateField(service, "processors", java.util.Map.copyOf(map));
@@ -335,18 +339,21 @@ class LoadTaskServiceTest {
   void isHealthy_returnsFalseWhenExecutorShutdown() {
     CountingProcessor processor = new CountingProcessor(TaskType.REST);
     LoadTaskService service = new LoadTaskService(cfg(1, 10), List.of(processor));
-    var executor = getPrivateField(service, "executor", java.util.concurrent.ThreadPoolExecutor.class);
+    var executor =
+        getPrivateField(service, "executor", java.util.concurrent.ThreadPoolExecutor.class);
     executor.shutdown();
     assertFalse(service.isHealthy());
   }
 
   @Test
   void executeTask_missingProcessorDuringRun_marksError() throws Exception {
-    // Replace processors with a map returning a processor on first get (submission) and null later (execution)
+    // Replace processors with a map returning a processor on first get (submission) and null later
+    // (execution)
     CountingProcessor underlying = new CountingProcessor(TaskType.REST);
     LoadTaskService service = new LoadTaskService(cfg(1, 10), List.of(underlying));
 
-    final java.util.concurrent.atomic.AtomicInteger calls = new java.util.concurrent.atomic.AtomicInteger();
+    final java.util.concurrent.atomic.AtomicInteger calls =
+        new java.util.concurrent.atomic.AtomicInteger();
     java.util.Map<TaskType, LoadTaskProcessor> sneakyMap =
         new java.util.AbstractMap<>() {
           @Override
@@ -395,7 +402,8 @@ class LoadTaskServiceTest {
     LoadTask queued = newTask(TaskType.REST);
     service.submitTask(queued);
     var cancelled = service.cancelTask(queued.getId());
-    assertEquals(LoadTaskService.CancellationResult.CancellationState.CANCELLED, cancelled.getState());
+    assertEquals(
+        LoadTaskService.CancellationResult.CancellationState.CANCELLED, cancelled.getState());
 
     var secondAttempt = service.cancelTask(queued.getId());
     assertEquals(

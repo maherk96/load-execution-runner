@@ -110,8 +110,10 @@ class RestProtocolMetricsTest {
 
     List<TaskRunReport.RestEndpoint> eps = r.protocolDetails.rest.endpoints;
     assertEquals(2, eps.size());
-    TaskRunReport.RestEndpoint a = eps.stream().filter(e -> "/a".equals(e.path)).findFirst().orElseThrow();
-    TaskRunReport.RestEndpoint b = eps.stream().filter(e -> "/b".equals(e.path)).findFirst().orElseThrow();
+    TaskRunReport.RestEndpoint a =
+        eps.stream().filter(e -> "/a".equals(e.path)).findFirst().orElseThrow();
+    TaskRunReport.RestEndpoint b =
+        eps.stream().filter(e -> "/b".equals(e.path)).findFirst().orElseThrow();
 
     assertEquals(2, a.total);
     assertEquals(1, a.success);

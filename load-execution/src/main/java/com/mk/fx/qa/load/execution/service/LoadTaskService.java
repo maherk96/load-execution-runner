@@ -45,18 +45,17 @@ import org.springframework.stereotype.Service;
 /**
  * Central service responsible for submitting, executing, tracking and cancelling load tasks.
  *
- * <p>Responsibilities:
- * - Accepts {@link com.mk.fx.qa.load.execution.model.LoadTask} submissions and routes execution to a
- *   matching {@link LoadTaskProcessor} based on {@link com.mk.fx.qa.load.execution.model.TaskType}.
- * - Tracks task lifecycle (QUEUED → PROCESSING → COMPLETED/ERROR/CANCELLED) and exposes read-only
- *   status, history and summary views.
- * - Maintains lightweight, in-memory metrics such as success rate, average processing duration and
- *   counters for completed/failed/cancelled tasks.
- * - Supports cooperative cancellation for queued and running tasks.
+ * <p>Responsibilities: - Accepts {@link com.mk.fx.qa.load.execution.model.LoadTask} submissions and
+ * routes execution to a matching {@link LoadTaskProcessor} based on {@link
+ * com.mk.fx.qa.load.execution.model.TaskType}. - Tracks task lifecycle (QUEUED → PROCESSING →
+ * COMPLETED/ERROR/CANCELLED) and exposes read-only status, history and summary views. - Maintains
+ * lightweight, in-memory metrics such as success rate, average processing duration and counters for
+ * completed/failed/cancelled tasks. - Supports cooperative cancellation for queued and running
+ * tasks.
  *
- * <p>Thread-safety: This service is designed to be used concurrently. It relies on
- * {@link java.util.concurrent.ConcurrentHashMap}, {@link java.util.concurrent.atomic} primitives and
- * a bounded worker pool to ensure safe updates to internal state. Public read methods return
+ * <p>Thread-safety: This service is designed to be used concurrently. It relies on {@link
+ * java.util.concurrent.ConcurrentHashMap}, {@link java.util.concurrent.atomic} primitives and a
+ * bounded worker pool to ensure safe updates to internal state. Public read methods return
  * snapshots computed from the current state without external synchronization.
  */
 @Slf4j
@@ -124,9 +123,7 @@ public class LoadTaskService {
     return pool;
   }
 
-  /**
-   * Builds an immutable map of task type to processor, validating uniqueness.
-   */
+  /** Builds an immutable map of task type to processor, validating uniqueness. */
   private Map<TaskType, LoadTaskProcessor> initialiseProcessors(
       List<LoadTaskProcessor> availableProcessors) {
     Map<TaskType, LoadTaskProcessor> map = new EnumMap<>(TaskType.class);
@@ -146,9 +143,9 @@ public class LoadTaskService {
   /**
    * Submits a task for asynchronous execution.
    *
-   * <p>If the service is not accepting tasks (e.g., after shutdown), an empty Optional is
-   * returned. If no processor exists for the task type, an error outcome is returned. Otherwise
-   * the task is queued and executed on the worker pool.
+   * <p>If the service is not accepting tasks (e.g., after shutdown), an empty Optional is returned.
+   * If no processor exists for the task type, an error outcome is returned. Otherwise the task is
+   * queued and executed on the worker pool.
    *
    * @param task domain task to execute
    * @return empty if not accepting new tasks, otherwise a submission outcome reflecting the
@@ -328,14 +325,12 @@ public class LoadTaskService {
   /**
    * Attempts to cancel the specified task.
    *
-   * <p>Behaviour:
-   * - If the task is queued and has not started, it is immediately marked as CANCELLED.
-   * - If the task is running, a cooperative cancellation is requested via interrupt; the method
-   *   returns {@link CancellationResult.CancellationState#CANCELLATION_REQUESTED}. The executing
-   *   processor should honour interrupts and the service will mark the task CANCELLED when the
-   *   worker observes the interruption.
-   * - If the task does not exist or has already reached a terminal state, the result reflects that
-   *   accordingly.
+   * <p>Behaviour: - If the task is queued and has not started, it is immediately marked as
+   * CANCELLED. - If the task is running, a cooperative cancellation is requested via interrupt; the
+   * method returns {@link CancellationResult.CancellationState#CANCELLATION_REQUESTED}. The
+   * executing processor should honour interrupts and the service will mark the task CANCELLED when
+   * the worker observes the interruption. - If the task does not exist or has already reached a
+   * terminal state, the result reflects that accordingly.
    *
    * @param taskId id of the task to cancel
    * @return result describing the cancellation outcome and current task status

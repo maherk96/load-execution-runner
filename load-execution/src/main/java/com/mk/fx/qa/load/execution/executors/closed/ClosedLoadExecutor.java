@@ -18,8 +18,8 @@ import lombok.extern.slf4j.Slf4j;
 
 /**
  * Executes a "closed" load model where a fixed number of virtual users each perform a configured
- * number of iterations, with optional warmup/ramp-up/hold phases. Responsible for managing the
- * user thread pool, respecting cancellation/hold expiration, and reporting completion stats.
+ * number of iterations, with optional warmup/ramp-up/hold phases. Responsible for managing the user
+ * thread pool, respecting cancellation/hold expiration, and reporting completion stats.
  *
  * <p>Threading: Creates a fixed thread pool sized to the number of users. Each user runs its
  * iterations sequentially on its thread. Ramp-up is achieved by delaying user submission.
@@ -148,9 +148,7 @@ public final class ClosedLoadExecutor {
     Objects.requireNonNull(iterationRunner, "iterationRunner");
   }
 
-  /**
-   * Executes all iterations for a single virtual user, honouring cancellation and hold expiry.
-   */
+  /** Executes all iterations for a single virtual user, honouring cancellation and hold expiry. */
   private static void runVirtualUser(
       UUID taskId,
       int totalUsers,
