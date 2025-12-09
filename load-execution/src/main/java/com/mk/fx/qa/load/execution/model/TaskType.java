@@ -6,6 +6,7 @@ import java.util.stream.Collectors;
 
 public enum TaskType {
   REST,
+  WEBSOCKET,
   FIX;
 
   public static TaskType fromValue(String value) {

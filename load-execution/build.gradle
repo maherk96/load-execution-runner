@@ -8,9 +8,7 @@ springBoot {
     mainClass = 'com.citi.fx.qa.load.execution.LoadExecutionRunnerMain'
 }
 
-configurations {
-    all*.exclude module: 'spring-boot-starter-logging'
-}
+
 
 ext {
     mapstructVersion = '1.6.3'
@@ -33,10 +31,14 @@ dependencies {
     implementation "org.springdoc:springdoc-openapi-starter-webmvc-ui:${springdocVersion}"
 
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testImplementation 'org.springframework.boot:spring-boot-starter-websocket'
+    testImplementation 'org.java-websocket:Java-WebSocket:1.5.6'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 
     implementation project(':api')
     implementation project(':rest-client')
+    implementation project(':ws-client')
+    implementation 'org.java-websocket:Java-WebSocket:1.5.6'
 }
 
 test {

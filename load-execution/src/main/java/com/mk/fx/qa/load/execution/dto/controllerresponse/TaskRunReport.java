@@ -106,6 +106,7 @@ public class TaskRunReport {
 
   public static class ProtocolDetails {
     public RestDetails rest;
+    public WebSocketDetails websocket;
   }
 
   public static class RestDetails {
@@ -124,6 +125,18 @@ public class TaskRunReport {
     public String outlierInfo;
     public java.time.Instant outlierTimestamp;
     public Integer likelyAffectedUser;
+  }
+
+  public static class WebSocketDetails {
+    public List<WebSocketMessage> messages;
+  }
+
+  public static class WebSocketMessage {
+    public String name;
+    public long total;
+    public long success;
+    public long failure;
+    public Latency latency;
   }
 
   public static class Latency {

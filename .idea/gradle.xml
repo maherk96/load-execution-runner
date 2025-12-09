@@ -25,6 +25,7 @@
             <option value="$PROJECT_DIR$/load-execution" />
             <option value="$PROJECT_DIR$/load-execution-service" />
             <option value="$PROJECT_DIR$/rest-client" />
+            <option value="$PROJECT_DIR$/ws-client" />
             <option value="$PROJECT_DIR$/../qa-fix-client" />
           </set>
         </option>
