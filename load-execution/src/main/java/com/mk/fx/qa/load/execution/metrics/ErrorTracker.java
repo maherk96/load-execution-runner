@@ -33,7 +33,8 @@ final class ErrorTracker {
 
   void recordFailureCategory(String category) {
     totalErrors.incrementAndGet();
-    String key = category == null || category.isBlank() ? "UNKNOWN" : category.toUpperCase();
+    // Preserve caller-provided category casing; tests expect exact key
+    String key = category == null || category.isBlank() ? "UNKNOWN" : category;
     errorBreakdown.computeIfAbsent(key, k -> new AtomicLong()).incrementAndGet();
   }
 

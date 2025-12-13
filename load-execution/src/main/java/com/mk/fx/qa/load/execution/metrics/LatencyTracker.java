@@ -45,35 +45,23 @@ final class LatencyTracker {
 
   Optional<Long> avgMs() {
     long c = samples.get();
-    return c == 0
-            ? Optional.empty()
-            : Optional.of(sum.get() / c);
+    return c == 0 ? Optional.empty() : Optional.of(sum.get() / c);
   }
 
   Optional<Long> p95Ms() {
-    return samples.get() == 0
-            ? Optional.empty()
-            : reservoir.percentile(95);
+    return samples.get() == 0 ? Optional.empty() : reservoir.percentile(95);
   }
 
   Optional<Long> p99Ms() {
-    return samples.get() == 0
-            ? Optional.empty()
-            : reservoir.percentile(99);
+    return samples.get() == 0 ? Optional.empty() : reservoir.percentile(99);
   }
-
-  private final AtomicLong count = new AtomicLong();
 
   void record(long latencyMs) {
     long v = Math.max(0, latencyMs);
-    count.incrementAndGet();
+    samples.incrementAndGet();
     sum.addAndGet(v);
     max.accumulateAndGet(v, Math::max);
     min.accumulateAndGet(v, Math::min);
     reservoir.add(v);
-  }
-
-  long count() {
-    return count.get();
   }
 }

@@ -19,14 +19,18 @@ final class WindowTracker {
   private final AtomicLong windowLatencyMax = new AtomicLong(0);
   private final AtomicLong windowLatencySum = new AtomicLong(0);
   private final AtomicLong windowSamples = new AtomicLong(0);
+  private final AtomicLong windowRequests = new AtomicLong(0);
+  private final AtomicLong windowErrors = new AtomicLong(0);
 
   /** Record a latency sample into the current window. */
-  void record(long latencyMs) {
+  void record(long latencyMs, boolean isError) {
     long v = Math.max(0, latencyMs);
     windowLatencyMin.accumulateAndGet(v, Math::min);
     windowLatencyMax.accumulateAndGet(v, Math::max);
     windowLatencySum.addAndGet(v);
     windowSamples.incrementAndGet();
+    windowRequests.incrementAndGet();
+    if (isError) windowErrors.incrementAndGet();
   }
 
   /**
@@ -34,8 +38,6 @@ final class WindowTracker {
    */
   TimeSeriesPoint snapshotAndReset(
           Instant timestamp,
-          long totalRequests,
-          long totalErrors,
           int usersStarted,
           int usersCompleted) {
 
@@ -44,6 +46,8 @@ final class WindowTracker {
     long sum = windowLatencySum.getAndSet(0);
     long min = windowLatencyMin.getAndSet(Long.MAX_VALUE);
     long max = windowLatencyMax.getAndSet(0);
+    long req = windowRequests.getAndSet(0);
+    long err = windowErrors.getAndSet(0);
 
     long latMin;
     long latMax;
@@ -59,10 +63,12 @@ final class WindowTracker {
       latAvg = sum / count;
     }
 
+    // The TimeSeriesPoint fields totalRequests/totalErrors are interpreted by tests
+    // as per-window counts, not cumulative totals.
     return new TimeSeriesPoint(
             timestamp,
-            totalRequests,
-            totalErrors,
+            req,
+            err,
             latMin,
             latMax,
             latAvg,

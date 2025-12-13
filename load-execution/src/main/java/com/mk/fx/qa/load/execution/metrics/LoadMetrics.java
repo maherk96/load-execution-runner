@@ -135,7 +135,7 @@ public class LoadMetrics {
   public void recordRequestSuccess(long latencyMs) {
     requests.incrementAndGet();
     latency.record(latencyMs);
-    window.record(latencyMs);
+    window.record(latencyMs, false);
   }
 
   /**
@@ -154,7 +154,7 @@ public class LoadMetrics {
   public void recordRequestFailure(Throwable t, long latencyMs) {
     requests.incrementAndGet();
     latency.record(latencyMs);
-    window.record(latencyMs);
+    window.record(latencyMs, true);
     errorTracker.recordFailure(t);
   }
 
@@ -164,7 +164,7 @@ public class LoadMetrics {
   public void recordFailure(String category, long latencyMs) {
     requests.incrementAndGet();
     latency.record(latencyMs);
-    window.record(latencyMs);
+    window.record(latencyMs, true);
     errorTracker.recordFailureCategory(category);
   }
 
@@ -321,14 +321,12 @@ public class LoadMetrics {
       log.info(sb.toString());
     }
 
-    // store time-series point (window is reset inside WindowTracker)
+    // store time-series point (window is reset inside WindowTracker).
+    // Tests expect per-window counts (requests/errors) in TimeSeriesPoint.
     Instant now = Instant.now();
-    long req = requests.get();
-    long err = errorTracker.totalErrors();
-
     timeSeries.add(
             window.snapshotAndReset(
-                    now, req, err, users.totalUsersStarted(), users.totalUsersCompleted()));
+                    now, users.totalUsersStarted(), users.totalUsersCompleted()));
   }
 
   @VisibleForTesting
