@@ -26,6 +26,13 @@ public class RestProtocolMetrics implements ProtocolMetricsProvider {
     return category;
   }
 
+  public void recordException(String method, String path, String category, Integer userId) {
+    EndpointStats s =
+        endpointStats.computeIfAbsent(key(method, path), k -> new EndpointStats(method, path));
+    String cat = (category == null || category.isBlank()) ? "EXCEPTION" : category.toUpperCase();
+    s.onFailure(cat);
+  }
+
   private String key(String method, String path) {
     return (method == null ? "" : method) + " " + (path == null ? "" : path);
   }

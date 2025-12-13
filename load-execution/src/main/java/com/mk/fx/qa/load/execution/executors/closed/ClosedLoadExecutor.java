@@ -49,6 +49,24 @@ public final class ClosedLoadExecutor {
       BooleanSupplier cancellationRequested,
       VirtualUserIterationRunner iterationRunner)
       throws Exception {
+    return execute(
+        taskId,
+        parameters,
+        cancellationRequested,
+        iterationRunner,
+        ClosedLoadOptions.defaults(parameters));
+  }
+
+  /**
+   * Runs a closed model execution with explicit options controlling stop and failure policy.
+   */
+  public static ClosedLoadResult execute(
+      UUID taskId,
+      ClosedLoadParameters parameters,
+      BooleanSupplier cancellationRequested,
+      VirtualUserIterationRunner iterationRunner,
+      ClosedLoadOptions options)
+      throws Exception {
     validateTask(taskId, parameters, cancellationRequested, iterationRunner);
 
     var users = Math.max(1, parameters.users());
@@ -78,15 +96,18 @@ public final class ClosedLoadExecutor {
     var executor = newFixedThreadPool(users, threadFactory);
     List<Future<?>> futures = new ArrayList<>();
 
-    var holdDeadline = holdFor.isZero() ? Long.MAX_VALUE : System.nanoTime() + holdFor.toNanos();
+    var holdDeadline =
+        options.stopMode() == ClosedLoadOptions.StopMode.DURATION && !holdFor.isZero()
+            ? System.nanoTime() + holdFor.toNanos()
+            : Long.MAX_VALUE;
     var rampIntervalMillis = computeRampIntervalMillis(users, rampUp);
 
     try {
       log.info("Task {} starting ramp-up for {} users over {}", taskId, users, rampUp);
       for (int userIndex = 0; userIndex < users; userIndex++) {
-        if (shouldStop(cancellationRequested, cancellationObserved)
-            || isHoldExpired(holdDeadline)) {
-          holdExpired.compareAndSet(false, isHoldExpired(holdDeadline));
+        boolean expired = options.stopMode() == ClosedLoadOptions.StopMode.DURATION && isHoldExpired(holdDeadline);
+        if (shouldStop(cancellationRequested, cancellationObserved) || expired) {
+          holdExpired.compareAndSet(false, expired);
           log.info(
               "Task {} stopping ramp-up at user {} due to {}",
               taskId,
@@ -109,7 +130,8 @@ public final class ClosedLoadExecutor {
                         cancellationObserved,
                         holdExpired,
                         completedUsers,
-                        iterationRunner)));
+                        iterationRunner,
+                        options)));
 
         if (userIndex < users - 1 && rampIntervalMillis > 0) {
           sleepWithCancellation(
@@ -123,9 +145,15 @@ public final class ClosedLoadExecutor {
       waitForUsers(
           futures, holdDeadline, cancellationRequested, cancellationObserved, holdExpired, taskId);
     } finally {
-      executor.shutdownNow();
+      // Prefer graceful shutdown; escalate only if required
+      executor.shutdown();
       try {
-        executor.awaitTermination(30, TimeUnit.SECONDS);
+        if (!executor.awaitTermination(30, TimeUnit.SECONDS)) {
+          if (options.shutdownPolicy() == ClosedLoadOptions.ShutdownPolicy.FORCEFUL_ON_TIMEOUT) {
+            executor.shutdownNow();
+          }
+          executor.awaitTermination(15, TimeUnit.SECONDS);
+        }
       } catch (InterruptedException interrupted) {
         Thread.currentThread().interrupt();
         throw interrupted;
@@ -159,7 +187,8 @@ public final class ClosedLoadExecutor {
       AtomicBoolean cancellationObserved,
       AtomicBoolean holdExpired,
       AtomicInteger completedUsers,
-      VirtualUserIterationRunner iterationRunner) {
+      VirtualUserIterationRunner iterationRunner,
+      ClosedLoadOptions options) {
     log.info("Task {} virtual user {} started", taskId, userIndex + 1);
     int successfulIterations = 0;
 
@@ -175,7 +204,7 @@ public final class ClosedLoadExecutor {
         return;
       }
 
-      if (isHoldExpired(holdDeadline)) {
+      if (options.stopMode() == ClosedLoadOptions.StopMode.DURATION && isHoldExpired(holdDeadline)) {
         holdExpired.set(true);
         log.info(
             "Task {} virtual user {} stopping due to hold expiration at iteration {} ({}/{} completed)",
@@ -210,7 +239,10 @@ public final class ClosedLoadExecutor {
             successfulIterations,
             iterations,
             ex);
-        // Stop this virtual user but let others continue
+        if (options.failureMode() == ClosedLoadOptions.FailureMode.CANCEL_TEST) {
+          cancellationObserved.set(true);
+        }
+        // Stop this virtual user; others continue unless cancellation observed globally
         return;
       }
     }

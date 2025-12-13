@@ -36,4 +36,11 @@ public class LoadModelConfig {
 
   @JsonProperty("warmup")
   private String warmup;
+
+  // Optional executor behavior tuning
+  @JsonProperty("openOptions")
+  private OpenModelOptionsConfig openOptions;
+
+  @JsonProperty("closedOptions")
+  private ClosedModelOptionsConfig closedOptions;
 }
