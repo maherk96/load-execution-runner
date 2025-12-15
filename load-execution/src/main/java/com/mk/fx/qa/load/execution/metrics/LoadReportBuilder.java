@@ -18,23 +18,6 @@ import java.util.Objects;
  */
 final class LoadReportBuilder {
 
-  /* ----------------------------- constants ----------------------------- */
-
-  private static final String STATUS_SUCCESS = "SUCCESS";
-  private static final String STATUS_PARTIAL_SUCCESS = "PARTIAL_SUCCESS";
-  private static final String STATUS_FAILED = "FAILED";
-
-  private static final String COMPLETION_CANCELLED = "CANCELLED";
-  private static final String COMPLETION_HOLD_EXPIRED = "HOLD_EXPIRED";
-  private static final String COMPLETION_ALL_USERS_FINISHED = "ALL_USERS_FINISHED";
-  private static final String COMPLETION_ERROR = "ERROR";
-
-  private static final String VARIANCE_LOW = "LOW";
-  private static final String VARIANCE_MODERATE = "MODERATE";
-  private static final String VARIANCE_HIGH = "HIGH";
-
-  /* ----------------------------- public API ----------------------------- */
-
   TaskRunReport build(
           TaskConfig config,
           Instant startedAt,
@@ -56,103 +39,172 @@ final class LoadReportBuilder {
 
     final TaskRunReport report = new TaskRunReport();
 
-    /* identifiers & timing */
+    // ---------------- identity & timing ----------------
     report.taskId = config.taskId();
     report.taskType = config.taskType();
-    report.model = LoadModelType.valueOf(config.model().name());
-    report.startTime = startedAt;
+    report.model = config.model();
 
+    report.startTime = startedAt;
     final Instant endTime = now();
     report.endTime = endTime;
     report.durationSec = Math.max(0.0, secondsBetween(startedAt, endTime));
 
-    /* environment */
-    final TaskRunReport.EnvInfo env = new TaskRunReport.EnvInfo();
+    // ---------------- environment ----------------
+    final TaskRunReport.Environment env = new TaskRunReport.Environment();
     env.host = EnvironmentInfo.host();
     env.triggeredBy = EnvironmentInfo.triggeredBy();
     report.environment = env;
 
-    /* config */
-    final TaskRunReport.Config cfg = buildConfig(config);
-    report.config = cfg;
+    // ---------------- execution config (MODEL-AWARE) ----------------
+    report.execution = buildExecutionConfig(config);
 
-    /* metrics */
-    final TaskRunReport.Metrics metrics =
-            buildMetrics(totalRequests, totalErrors, achievedRps, latency, users, errors, cfg);
-    report.metrics = metrics;
+    // ---------------- model info ----------------
+    report.modelInfo = buildModelInfo(config, report.execution);
 
-    /* completion */
-    report.testCompletion =
+    // ---------------- metrics ----------------
+    report.metrics = buildMetrics(totalRequests, totalErrors, achievedRps, latency, users, errors);
+
+    // ---------------- completion ----------------
+    report.completion =
             computeCompletion(
                     config,
                     report.durationSec,
                     totalRequests,
-                    metrics.usersCompleted,
-                    cfg.expectedTotalRequests,
+                    report.metrics.usersCompleted,
+                    report.execution.expectedTotalRequests,
                     completionInfo);
 
-    /* capacity */
-    report.capacityAnalysis = computeCapacity(cfg.expectedRps, achievedRps);
+    // ---------------- capacity ----------------
+    report.capacity = computeCapacity(config.model(), report.execution.expectedRps, achievedRps);
 
-    /* time series */
-    report.timeSeriesEntries =
-            buildTimeSeriesEntries(timeSeries, startedAt, cfg.expectedRps);
+    // ---------------- time series ----------------
+    report.timeSeries = buildTimeSeries(timeSeries, startedAt, report.execution.expectedRps);
 
-    /* protocol decorations */
+    // ---------------- protocol decorations ----------------
+    // Protocol providers decorate report.protocolDetails (and may add outlier flags etc.)
     if (protocolProviders != null) {
       for (ProtocolMetricsProvider provider : protocolProviders) {
-        if (provider != null) {
-          provider.applyTo(report);
-        }
+        if (provider != null) provider.applyTo(report);
       }
     }
 
-    /* user completion */
-    report.userCompletionAnalysis =
-            computeUserAnalysis(metrics.userCompletionHistogram);
+    // ---------------- user completion analysis ----------------
+    report.userCompletionAnalysis = computeUserAnalysis(report.metrics.userCompletionHistogram);
 
-    /* summary */
+    // ---------------- summary ----------------
     report.summary =
             computeSummary(
-                    metrics,
-                    report.testCompletion,
-                    report.capacityAnalysis,
+                    report.metrics,
+                    report.completion,
+                    report.capacity,
                     report.protocolDetails);
+
+    // ---------------- executive summary ----------------
+    report.executiveSummary = buildExecutiveSummary(report);
 
     return report;
   }
 
-  /* ----------------------------- config ----------------------------- */
+  /* ====================================================================== */
+  /* Execution config                                                       */
+  /* ====================================================================== */
 
-  private TaskRunReport.Config buildConfig(TaskConfig config) {
-    final TaskRunReport.Config cfg = new TaskRunReport.Config();
+  private TaskRunReport.ExecutionConfig buildExecutionConfig(TaskConfig config) {
+    final TaskRunReport.ExecutionConfig exec = new TaskRunReport.ExecutionConfig();
 
-    cfg.users = config.users();
-    cfg.iterationsPerUser = config.iterationsPerUser();
-    cfg.requestsPerIteration = config.requestsPerIteration();
-    cfg.warmup = config.warmup();
-    cfg.rampUp = config.rampUp();
-    cfg.holdFor = config.holdFor();
-    cfg.arrivalRatePerSec = config.arrivalRatePerSec();
-    cfg.openDuration = config.duration();
-    cfg.expectedTotalRequests = config.expectedTotalRequests();
+    // expectations (shared)
+    exec.expectedTotalRequests = config.expectedTotalRequests();
+    exec.expectedRps = computeExpectedRps(config);
 
-    Double expectedRps = config.expectedRps();
-    if (expectedRps == null
-            && config.model() == LoadModelType.CLOSED
+    if (config.model() == LoadModelType.CLOSED) {
+      final TaskRunReport.ClosedConfig c = new TaskRunReport.ClosedConfig();
+      c.users = safeMinOne(config.users());
+      c.iterationsPerUser = safeMinOne(config.iterationsPerUser());
+      c.requestsPerIteration = Math.max(1, config.requestsPerIteration());
+
+      // IMPORTANT UX: zero durations are shown as null to avoid "PT0S" confusion
+      c.warmup = nullIfZero(config.warmup());
+      c.rampUp = nullIfZero(config.rampUp());
+      c.holdFor = nullIfZero(config.holdFor());
+
+      exec.closed = c;
+      exec.open = null;
+    } else {
+      final TaskRunReport.OpenConfig o = new TaskRunReport.OpenConfig();
+      o.arrivalRatePerSec = config.arrivalRatePerSec();
+      o.duration = nullIfZero(config.duration());
+
+      // If you have maxConcurrent in request somewhere else, populate it.
+      // It's not in TaskConfig, so keep null unless you later add it.
+      o.maxConcurrent = null;
+
+      exec.open = o;
+      exec.closed = null;
+    }
+
+    return exec;
+  }
+
+  private Double computeExpectedRps(TaskConfig config) {
+    // Preserve your existing intent:
+    // - use expectedRps if provided
+    // - else derive for CLOSED if holdFor > 0
+    // - else null
+    Double expected = config.expectedRps();
+    if (expected != null) return expected;
+
+    if (config.model() == LoadModelType.CLOSED
             && config.holdFor() != null
             && !config.holdFor().isZero()) {
 
-      final double holdSec =
-              Math.max(0.001, seconds(config.holdFor()));
-      expectedRps = cfg.expectedTotalRequests / holdSec;
+      double holdSec = Math.max(0.001, seconds(config.holdFor()));
+      return config.expectedTotalRequests() / holdSec;
     }
 
-    cfg.expectedRps = expectedRps;
-    return cfg;
+    return null;
   }
 
-  /* ----------------------------- metrics ----------------------------- */
+  private TaskRunReport.ModelInfo buildModelInfo(TaskConfig config, TaskRunReport.ExecutionConfig exec) {
+    final TaskRunReport.ModelInfo mi = new TaskRunReport.ModelInfo();
+
+    if (config.model() == LoadModelType.CLOSED) {
+      mi.description = "Closed model: fixed number of virtual users executing iterations.";
+      mi.throughputExplanation =
+              "Throughput is latency-bound: RPS increases with faster responses and/or more users.";
+      mi.configNotes =
+              phaseNote(exec.closed != null ? exec.closed.warmup : null,
+                      exec.closed != null ? exec.closed.rampUp : null,
+                      exec.closed != null ? exec.closed.holdFor : null);
+    } else {
+      mi.description = "Open model: arrivals launched at a target rate up to a max concurrency.";
+      mi.throughputExplanation =
+              "Throughput is rate-driven: aim to meet target arrival rate; saturation policy controls overflow.";
+      mi.configNotes =
+              (exec.open != null && exec.open.duration != null)
+                      ? "Execution duration: " + exec.open.duration
+                      : "Execution duration: not configured (runs until stopped).";
+    }
+
+    return mi;
+  }
+
+  private String phaseNote(Duration warmup, Duration rampUp, Duration holdFor) {
+    boolean any = (warmup != null && !warmup.isZero())
+            || (rampUp != null && !rampUp.isZero())
+            || (holdFor != null && !holdFor.isZero());
+
+    if (!any) return "No warmup/ramp-up/hold phases configured.";
+
+    List<String> parts = new ArrayList<>();
+    if (warmup != null && !warmup.isZero()) parts.add("warmup=" + warmup);
+    if (rampUp != null && !rampUp.isZero()) parts.add("rampUp=" + rampUp);
+    if (holdFor != null && !holdFor.isZero()) parts.add("holdFor=" + holdFor);
+    return String.join(", ", parts);
+  }
+
+  /* ====================================================================== */
+  /* Metrics                                                                */
+  /* ====================================================================== */
 
   private TaskRunReport.Metrics buildMetrics(
           long totalRequests,
@@ -160,111 +212,115 @@ final class LoadReportBuilder {
           double achievedRps,
           LatencyTracker latency,
           UserTracker users,
-          ErrorTracker errors,
-          TaskRunReport.Config cfg) {
+          ErrorTracker errors) {
 
-    final TaskRunReport.Metrics metrics = new TaskRunReport.Metrics();
+    final TaskRunReport.Metrics m = new TaskRunReport.Metrics();
 
-    metrics.totalRequests = totalRequests;
-    metrics.failureCount = totalErrors;
-    metrics.successCount = Math.max(0, totalRequests - totalErrors);
-    metrics.successRate =
-            totalRequests == 0 ? 0.0 : (double) metrics.successCount / totalRequests;
-    metrics.achievedRps = achievedRps;
+    m.totalRequests = totalRequests;
+    m.failureCount = totalErrors;
+    m.successCount = Math.max(0, totalRequests - totalErrors);
+    m.successRate = totalRequests == 0 ? 0.0 : (double) m.successCount / totalRequests;
+    m.achievedRps = achievedRps;
 
-    /* latency */
-    final long latencySamples = latency.sampleCount();
-    final long safeSamples = Math.max(1, latencySamples);
-
+    // latency: average must use sample count, not totalRequests
+    final long samples = latency.sampleCount();
     final TaskRunReport.Latency lat = new TaskRunReport.Latency();
-    lat.avg = latencySamples == 0 ? 0L : latency.sumMs() / safeSamples;
     lat.min = latency.minMs().orElse(0L);
     lat.max = latency.maxMs().orElse(0L);
+    lat.avg = samples == 0 ? 0L : (latency.sumMs() / Math.max(1, samples));
     lat.p95 = latency.p95Ms().orElse(0L);
     lat.p99 = latency.p99Ms().orElse(0L);
-    metrics.latency = lat;
+    m.latency = lat;
 
-    /* errors */
-    final Map<String, Long> breakdown = errors.breakdownSnapshot();
-    if (breakdown.isEmpty()) {
-      metrics.errorBreakdown = List.of();
+    // errors: breakdown + samples
+    Map<String, Long> breakdown = errors.breakdownSnapshot();
+    if (breakdown == null || breakdown.isEmpty()) {
+      m.errorBreakdown = List.of();
     } else {
-      final List<TaskRunReport.ErrorItem> items =
-              new ArrayList<>(breakdown.size());
+      List<TaskRunReport.ErrorBreakdownItem> items = new ArrayList<>(breakdown.size());
       for (Map.Entry<String, Long> e : breakdown.entrySet()) {
-        final TaskRunReport.ErrorItem item = new TaskRunReport.ErrorItem();
+        TaskRunReport.ErrorBreakdownItem item = new TaskRunReport.ErrorBreakdownItem();
         item.type = e.getKey();
         item.count = e.getValue();
         items.add(item);
       }
-      metrics.errorBreakdown = List.copyOf(items);
+      m.errorBreakdown = List.copyOf(items);
     }
 
-    metrics.errorSamples = errors.samplesSnapshot();
+    // Map ErrorSample to new DTO shape if necessary
+    // Assuming your tracker returns TaskRunReport.ErrorSample-compatible objects? If not, adapt here.
+    List<TaskRunReport.ErrorSample> samplesList = new ArrayList<>();
+    var trackerSamples = errors.samplesSnapshot();
+    if (trackerSamples != null) {
+      for (var s : trackerSamples) {
+        TaskRunReport.ErrorSample es = new TaskRunReport.ErrorSample();
+        es.type = s.type;
+        es.message = s.message;
+        es.stackTrace = s.stackTrace;
+        samplesList.add(es);
+      }
+    }
+    m.errorSamples = List.copyOf(samplesList);
 
-    /* users */
-    metrics.userCompletionHistogram = users.buildHistogram();
-    metrics.usersStarted = users.totalUsersStarted();
-    metrics.usersCompleted = users.totalUsersCompleted();
-    metrics.expectedRps = cfg.expectedRps;
+    // users
+    m.userCompletionHistogram = users.buildHistogram(); // must already be 1-based ids (recommended)
+    m.usersStarted = users.totalUsersStarted();
+    m.usersCompleted = users.totalUsersCompleted();
 
-    return metrics;
+    return m;
   }
 
-  /* ----------------------------- time series ----------------------------- */
+  /* ====================================================================== */
+  /* Time series                                                            */
+  /* ====================================================================== */
 
-  private List<TaskRunReport.TimeSeriesEntry> buildTimeSeriesEntries(
+  private List<TaskRunReport.TimeSeriesSnapshot> buildTimeSeries(
           List<TimeSeriesPoint> timeSeries,
           Instant startedAt,
           Double expectedRps) {
 
-    if (timeSeries == null || timeSeries.isEmpty()) {
-      return List.of();
-    }
+    if (timeSeries == null || timeSeries.isEmpty()) return List.of();
 
-    final List<TaskRunReport.TimeSeriesEntry> entries =
-            new ArrayList<>(timeSeries.size());
+    List<TaskRunReport.TimeSeriesSnapshot> snapshots = new ArrayList<>(timeSeries.size());
 
-    Instant prevTs = startedAt;
+    Instant prev = startedAt;
     long totalSoFar = 0;
 
-    for (TimeSeriesPoint point : timeSeries) {
-      final TaskRunReport.TimeSeriesEntry entry =
-              new TaskRunReport.TimeSeriesEntry();
+    for (TimeSeriesPoint p : timeSeries) {
+      TaskRunReport.TimeSeriesSnapshot s = new TaskRunReport.TimeSeriesSnapshot();
+      s.timestamp = p.timestamp();
 
-      entry.timestamp = point.timestamp();
-      entry.usersCompleted = point.usersCompleted();
-      entry.usersActive =
-              Math.max(0, point.usersStarted() - point.usersCompleted());
+      // Snapshot semantics: completed "so far"
+      s.usersCompletedSoFar = p.usersCompleted();
+      s.usersActive = Math.max(0, p.usersStarted() - p.usersCompleted());
 
-      final long windowReq = point.totalRequests();
-      final long windowErr = point.totalErrors();
+      long windowReq = p.totalRequests();
+      long windowErr = p.totalErrors();
 
-      final double secs =
-              Math.max(0.001, secondsBetween(prevTs, point.timestamp()));
-
-      entry.rpsInWindow = windowReq / secs;
-      entry.expectedRpsInWindow = expectedRps;
+      double secs = Math.max(0.001, secondsBetween(prev, p.timestamp()));
+      s.rpsInWindow = windowReq / secs;
+      s.expectedRpsInWindow = expectedRps;
 
       totalSoFar += windowReq;
-      entry.totalRequestsSoFar = totalSoFar;
-      entry.errorsInWindow = windowErr;
+      s.totalRequestsSoFar = totalSoFar;
+      s.errorsInWindow = windowErr;
 
-      final TaskRunReport.LatencyWindow lw =
-              new TaskRunReport.LatencyWindow();
-      lw.min = point.latMinMs();
-      lw.avg = point.latAvgMs();
-      lw.max = point.latMaxMs();
-      entry.latency = lw;
+      TaskRunReport.LatencyWindow lw = new TaskRunReport.LatencyWindow();
+      lw.min = p.latMinMs();
+      lw.avg = p.latAvgMs();
+      lw.max = p.latMaxMs();
+      s.latency = lw;
 
-      entries.add(entry);
-      prevTs = point.timestamp();
+      snapshots.add(s);
+      prev = p.timestamp();
     }
 
-    return List.copyOf(entries);
+    return List.copyOf(snapshots);
   }
 
-  /* ----------------------------- completion ----------------------------- */
+  /* ====================================================================== */
+  /* Completion                                                             */
+  /* ====================================================================== */
 
   private TaskRunReport.TestCompletion computeCompletion(
           TaskConfig cfg,
@@ -274,246 +330,44 @@ final class LoadReportBuilder {
           long expectedTotalRequests,
           CompletionInfo info) {
 
-    final TaskRunReport.TestCompletion tc =
-            new TaskRunReport.TestCompletion();
+    TaskRunReport.TestCompletion tc = new TaskRunReport.TestCompletion();
 
     tc.expectedDurationSec = expectedDuration(cfg);
     tc.actualDurationSec = actualDurationSec;
+
     tc.percentComplete =
             (int)
                     Math.max(
                             0,
                             Math.min(
                                     100,
-                                    Math.round(
-                                            (actualRequests * 100.0)
-                                                    / Math.max(1, expectedTotalRequests))));
+                                    Math.round((actualRequests * 100.0) / Math.max(1, expectedTotalRequests))));
 
+    // Precedence: CANCELLED always wins
     if (info != null && info.cancelled) {
-      tc.reason = COMPLETION_CANCELLED;
+      tc.reason = TaskRunReport.CompletionReason.CANCELLED;
       tc.message = "Execution cancelled before completion.";
       return tc;
     }
 
-    final String reason = determineCompletionReason(
-            cfg, actualDurationSec, usersCompleted, info, tc.expectedDurationSec);
+    TaskRunReport.CompletionReason reason =
+            determineCompletionReason(cfg, actualDurationSec, usersCompleted, info, tc.expectedDurationSec);
 
     tc.reason = reason;
     tc.message =
             switch (reason) {
-              case COMPLETION_ALL_USERS_FINISHED ->
-                      "All users completed iterations before hold expired.";
-              case COMPLETION_HOLD_EXPIRED ->
-                      "Execution ran for the configured hold/duration.";
-              case COMPLETION_ERROR ->
-                      "Execution stopped before completion due to errors or early termination.";
-              default -> "Execution finished.";
+              case ALL_USERS_FINISHED -> "All users completed iterations.";
+              case HOLD_EXPIRED -> "Execution ran for the configured duration/hold.";
+              case ERROR -> "Execution stopped before completion due to errors or early termination.";
+              case CANCELLED -> "Execution cancelled.";
             };
 
     return tc;
   }
 
-  /* ----------------------------- capacity ----------------------------- */
-
-  private TaskRunReport.CapacityAnalysis computeCapacity(
-          Double targetRps,
-          double achievedRps) {
-
-    final TaskRunReport.CapacityAnalysis ca =
-            new TaskRunReport.CapacityAnalysis();
-
-    ca.targetRps = targetRps;
-    ca.achievedRps = achievedRps;
-
-    if (targetRps == null || targetRps <= 0) {
-      ca.utilizationPercent = null;
-      ca.assessment = "UNKNOWN";
-      ca.recommendation =
-              "Define a target RPS to assess utilization.";
-      return ca;
-    }
-
-    final double utilization = (achievedRps / targetRps) * 100.0;
-    ca.utilizationPercent = utilization;
-
-    if (utilization < 80.0) {
-      ca.assessment = "UNDER_UTILIZED";
-      ca.recommendation =
-              "Increase load to better utilize system capacity.";
-    } else if (utilization <= 120.0) {
-      ca.assessment = "OPTIMAL";
-      ca.recommendation =
-              "Maintain current load; system operating near target.";
-    } else {
-      ca.assessment = "OVER_UTILIZED";
-      ca.recommendation =
-              "System has headroom; consider raising targets or adding scenarios.";
-    }
-
-    return ca;
-  }
-
-  /* ----------------------------- user analysis ----------------------------- */
-
-  private TaskRunReport.UserCompletionAnalysis computeUserAnalysis(
-          List<TaskRunReport.UserCompletion> histogram) {
-
-    if (histogram == null || histogram.isEmpty()) {
-      return null;
-    }
-
-    final TaskRunReport.UserCompletionAnalysis uca =
-            new TaskRunReport.UserCompletionAnalysis();
-
-    TaskRunReport.UserCompletion fastest = null;
-    TaskRunReport.UserCompletion slowest = null;
-    long sum = 0;
-
-    for (TaskRunReport.UserCompletion uc : histogram) {
-      sum += uc.completionTimeMs;
-      if (fastest == null || uc.completionTimeMs < fastest.completionTimeMs) {
-        fastest = uc;
-      }
-      if (slowest == null || uc.completionTimeMs > slowest.completionTimeMs) {
-        slowest = uc;
-      }
-    }
-
-    final double avg = sum / (double) histogram.size();
-    double varianceSum = 0.0;
-
-    for (TaskRunReport.UserCompletion uc : histogram) {
-      final double d = uc.completionTimeMs - avg;
-      varianceSum += d * d;
-    }
-
-    final double stdDev =
-            Math.sqrt(varianceSum / histogram.size());
-    final double variancePct =
-            avg > 0 ? (stdDev / avg) * 100.0 : 0.0;
-
-    final String assessment =
-            variancePct < 20.0
-                    ? VARIANCE_LOW
-                    : (variancePct <= 50.0 ? VARIANCE_MODERATE : VARIANCE_HIGH);
-
-    uca.fastest = toSummary(fastest);
-    uca.slowest = toSummary(slowest);
-    uca.avgCompletionTimeMs = avg;
-    uca.stdDevMs = stdDev;
-    uca.varianceAssessment = assessment;
-
-    uca.insight =
-            switch (assessment) {
-              case VARIANCE_LOW ->
-                      "User completion times are consistent across the run.";
-              case VARIANCE_MODERATE ->
-                      "Moderate variance observed; investigate hotspots or uneven work distribution.";
-              default ->
-                      "High variance in completion times; likely contention or endpoint variability.";
-            };
-
-    return uca;
-  }
-
-  /* ----------------------------- summary ----------------------------- */
-
-  private TaskRunReport.Summary computeSummary(
-          TaskRunReport.Metrics metrics,
-          TaskRunReport.TestCompletion completion,
-          TaskRunReport.CapacityAnalysis capacity,
-          TaskRunReport.ProtocolDetails protocolDetails) {
-
-    final TaskRunReport.Summary summary =
-            new TaskRunReport.Summary();
-
-    final String status =
-            metrics.successRate >= 1.0
-                    ? STATUS_SUCCESS
-                    : (metrics.successRate >= 0.95
-                    ? STATUS_PARTIAL_SUCCESS
-                    : STATUS_FAILED);
-
-    summary.status = status;
-    summary.message =
-            switch (status) {
-              case STATUS_SUCCESS ->
-                      "All requests succeeded with no failures.";
-              case STATUS_PARTIAL_SUCCESS ->
-                      "Minor failures observed; overall run largely successful.";
-              default ->
-                      "Failures observed; review errors and outliers.";
-            };
-
-    summary.highlights = new ArrayList<>(6);
-    summary.concerns = new ArrayList<>(4);
-
-    summary.highlights.add(
-            String.format("successRate=%.2f%%", metrics.successRate * 100));
-    summary.highlights.add(
-            "latency.avg=" + metrics.latency.avg + "ms");
-    summary.highlights.add(
-            "latency.p95=" + metrics.latency.p95 + "ms");
-
-    if (capacity != null && capacity.targetRps != null) {
-      summary.highlights.add(
-              String.format(
-                      "achievedRps=%.2f vs target=%.2f",
-                      metrics.achievedRps, capacity.targetRps));
-    }
-
-    if (completion != null && completion.reason != null) {
-      summary.highlights.add("completion=" + completion.reason);
-    }
-
-    if (metrics.failureCount > 0) {
-      summary.concerns.add("failures=" + metrics.failureCount);
-    }
-
-    if (metrics.usersStarted > 0
-            && metrics.usersCompleted < metrics.usersStarted) {
-      summary.concerns.add(
-              "incompleteUsers="
-                      + (metrics.usersStarted - metrics.usersCompleted));
-    }
-
-    if (protocolDetails != null
-            && protocolDetails.rest != null
-            && protocolDetails.rest.endpoints != null
-            && protocolDetails.rest.endpoints.stream()
-            .anyMatch(e -> Boolean.TRUE.equals(e.outlierDetected))) {
-      summary.concerns.add("latencyOutliersDetected");
-    }
-
-    if (capacity != null
-            && capacity.utilizationPercent != null
-            && capacity.utilizationPercent < 50.0) {
-      summary.concerns.add(
-              "lowUtilization="
-                      + String.format("%.1f%%", capacity.utilizationPercent));
-    }
-
-    return summary;
-  }
-
-  /* ----------------------------- helpers ----------------------------- */
-
-  private TaskRunReport.UserCompletionSummary toSummary(
-          TaskRunReport.UserCompletion uc) {
-
-    final TaskRunReport.UserCompletionSummary s =
-            new TaskRunReport.UserCompletionSummary();
-    s.userId = uc.userId;
-    s.completionTimeMs = uc.completionTimeMs;
-    s.iterationsCompleted = uc.iterationsCompleted;
-    return s;
-  }
-
   private Double expectedDuration(TaskConfig cfg) {
     if (cfg.model() == LoadModelType.CLOSED) {
-      return seconds(cfg.warmup())
-              + seconds(cfg.rampUp())
-              + seconds(cfg.holdFor());
+      return seconds(cfg.warmup()) + seconds(cfg.rampUp()) + seconds(cfg.holdFor());
     }
     if (cfg.model() == LoadModelType.OPEN && cfg.duration() != null) {
       return seconds(cfg.duration());
@@ -521,7 +375,7 @@ final class LoadReportBuilder {
     return null;
   }
 
-  private String determineCompletionReason(
+  private TaskRunReport.CompletionReason determineCompletionReason(
           TaskConfig cfg,
           double actualDurationSec,
           int usersCompleted,
@@ -529,29 +383,261 @@ final class LoadReportBuilder {
           Double expectedDurationSec) {
 
     if (cfg.model() == LoadModelType.CLOSED) {
-      final boolean holdExpired =
-              info != null && Boolean.TRUE.equals(info.holdExpired);
-      final Integer totalUsers =
-              info != null ? info.totalUsers : cfg.users();
+      boolean holdExpired = info != null && Boolean.TRUE.equals(info.holdExpired);
+      Integer totalUsers = info != null ? info.totalUsers : cfg.users();
 
-      if (holdExpired) return COMPLETION_HOLD_EXPIRED;
-      if (totalUsers != null && usersCompleted >= totalUsers)
-        return COMPLETION_ALL_USERS_FINISHED;
-      if (totalUsers != null) return COMPLETION_ERROR;
+      if (holdExpired) return TaskRunReport.CompletionReason.HOLD_EXPIRED;
+      if (totalUsers != null && usersCompleted >= totalUsers) return TaskRunReport.CompletionReason.ALL_USERS_FINISHED;
+      if (totalUsers != null && usersCompleted < totalUsers) return TaskRunReport.CompletionReason.ERROR;
 
-      return (expectedDurationSec != null
-              && actualDurationSec + 1 < expectedDurationSec)
-              ? COMPLETION_ERROR
-              : COMPLETION_HOLD_EXPIRED;
+      // Fallback: duration-based
+      if (expectedDurationSec != null && actualDurationSec + 1 < expectedDurationSec) {
+        return TaskRunReport.CompletionReason.ERROR;
+      }
+      return TaskRunReport.CompletionReason.HOLD_EXPIRED;
     }
 
+    // OPEN
     if (expectedDurationSec != null) {
       return actualDurationSec >= expectedDurationSec - 1.0
-              ? COMPLETION_HOLD_EXPIRED
-              : COMPLETION_ERROR;
+              ? TaskRunReport.CompletionReason.HOLD_EXPIRED
+              : TaskRunReport.CompletionReason.ERROR;
+    }
+    return TaskRunReport.CompletionReason.HOLD_EXPIRED;
+  }
+
+  /* ====================================================================== */
+  /* Capacity                                                               */
+  /* ====================================================================== */
+
+  private TaskRunReport.CapacityAnalysis computeCapacity(
+          LoadModelType model,
+          Double targetRps,
+          double achievedRps) {
+
+    TaskRunReport.CapacityAnalysis ca = new TaskRunReport.CapacityAnalysis();
+    ca.targetRps = targetRps;
+    ca.achievedRps = achievedRps;
+
+    // Key UX fix: capacity utilization is primarily meaningful for OPEN runs.
+    if (model == LoadModelType.CLOSED) {
+      ca.utilizationPercent = null;
+      ca.assessment = TaskRunReport.CapacityAssessment.NOT_APPLICABLE;
+      ca.recommendation = "For CLOSED model, interpret achieved RPS as latency-bound throughput.";
+      ca.note = "Capacity utilization is rate-target-based and applies primarily to OPEN model executions.";
+      return ca;
     }
 
-    return COMPLETION_HOLD_EXPIRED;
+    if (targetRps == null || targetRps <= 0) {
+      ca.utilizationPercent = null;
+      ca.assessment = TaskRunReport.CapacityAssessment.NOT_APPLICABLE;
+      ca.recommendation = "Define expectedRps to assess utilization against a target.";
+      ca.note = "No target RPS was configured for this OPEN run.";
+      return ca;
+    }
+
+    double util = (achievedRps / targetRps) * 100.0;
+    ca.utilizationPercent = util;
+
+    if (util < 80.0) {
+      ca.assessment = TaskRunReport.CapacityAssessment.UNDER_UTILIZED;
+      ca.recommendation = "Increase load (arrival rate / concurrency) to better utilize system capacity.";
+    } else if (util <= 120.0) {
+      ca.assessment = TaskRunReport.CapacityAssessment.OPTIMAL;
+      ca.recommendation = "Maintain current load; system operating near target.";
+    } else {
+      ca.assessment = TaskRunReport.CapacityAssessment.OVER_UTILIZED;
+      ca.recommendation = "System exceeded target throughput; consider raising targets or adding scenarios.";
+    }
+    ca.note = null;
+    return ca;
+  }
+
+  /* ====================================================================== */
+  /* User completion analysis                                                */
+  /* ====================================================================== */
+
+  private TaskRunReport.UserCompletionAnalysis computeUserAnalysis(
+          List<TaskRunReport.UserCompletion> histogram) {
+
+    if (histogram == null || histogram.isEmpty()) return null;
+
+    TaskRunReport.UserCompletionAnalysis uca = new TaskRunReport.UserCompletionAnalysis();
+
+    TaskRunReport.UserCompletion fastest = null, slowest = null;
+    long sum = 0;
+
+    for (TaskRunReport.UserCompletion uc : histogram) {
+      sum += uc.completionTimeMs;
+      if (fastest == null || uc.completionTimeMs < fastest.completionTimeMs) fastest = uc;
+      if (slowest == null || uc.completionTimeMs > slowest.completionTimeMs) slowest = uc;
+    }
+
+    double avg = sum / (double) histogram.size();
+    double varianceSum = 0.0;
+    for (TaskRunReport.UserCompletion uc : histogram) {
+      double d = uc.completionTimeMs - avg;
+      varianceSum += d * d;
+    }
+
+    double std = Math.sqrt(varianceSum / histogram.size());
+
+    uca.avgCompletionTimeMs = avg;
+    uca.stdDevMs = std;
+
+    double variancePct = avg > 0 ? (std / avg) * 100.0 : 0.0;
+    uca.variance =
+            variancePct < 20.0
+                    ? TaskRunReport.VarianceAssessment.LOW
+                    : (variancePct <= 50.0
+                    ? TaskRunReport.VarianceAssessment.MODERATE
+                    : TaskRunReport.VarianceAssessment.HIGH);
+
+    uca.fastest = toSummary(fastest);
+    uca.slowest = toSummary(slowest);
+
+    uca.insight =
+            switch (uca.variance) {
+              case LOW -> "User completion times are consistent across the run.";
+              case MODERATE -> "Moderate variance observed; investigate hotspots or uneven work distribution.";
+              case HIGH -> "High variance in completion times; likely contention or endpoint variability.";
+            };
+
+    return uca;
+  }
+
+  private TaskRunReport.UserCompletionSummary toSummary(TaskRunReport.UserCompletion uc) {
+    TaskRunReport.UserCompletionSummary s = new TaskRunReport.UserCompletionSummary();
+    s.userId = uc.userId;
+    s.completionTimeMs = uc.completionTimeMs;
+    s.iterationsCompleted = uc.iterationsCompleted;
+    return s;
+  }
+
+  /* ====================================================================== */
+  /* Summary                                                                 */
+  /* ====================================================================== */
+
+  private TaskRunReport.Summary computeSummary(
+          TaskRunReport.Metrics m,
+          TaskRunReport.TestCompletion completion,
+          TaskRunReport.CapacityAnalysis capacity,
+          TaskRunReport.ProtocolDetails protocolDetails) {
+
+    TaskRunReport.Summary s = new TaskRunReport.Summary();
+
+    // Status
+    if (m.successRate >= 1.0) {
+      s.status = TaskRunReport.ExecutionStatus.SUCCESS;
+      s.severity = TaskRunReport.Severity.INFO;
+      s.message = "All requests succeeded with no failures.";
+    } else if (m.successRate >= 0.95) {
+      s.status = TaskRunReport.ExecutionStatus.PARTIAL_SUCCESS;
+      s.severity = TaskRunReport.Severity.WARNING;
+      s.message = "Minor failures observed; overall run largely successful.";
+    } else {
+      s.status = TaskRunReport.ExecutionStatus.FAILED;
+      s.severity = TaskRunReport.Severity.CRITICAL;
+      s.message = "Failures observed; review errors and outliers.";
+    }
+
+    s.highlights = new ArrayList<>();
+    s.concerns = new ArrayList<>();
+
+    s.highlights.add(String.format("successRate=%.2f%%", m.successRate * 100));
+    s.highlights.add("latency.avg=" + m.latency.avg + "ms");
+    s.highlights.add("latency.p95=" + m.latency.p95 + "ms");
+
+    if (completion != null) {
+      s.highlights.add("completion=" + completion.reason);
+    }
+
+    if (capacity != null && capacity.targetRps != null) {
+      s.highlights.add(
+              String.format("achievedRps=%.2f vs target=%.2f", m.achievedRps, capacity.targetRps));
+    } else {
+      s.highlights.add(String.format("achievedRps=%.2f", m.achievedRps));
+    }
+
+    // Concerns
+    if (m.failureCount > 0) {
+      s.concerns.add("failures=" + m.failureCount);
+    }
+
+    if (m.usersStarted > 0 && m.usersCompleted < m.usersStarted) {
+      s.concerns.add("incompleteUsers=" + (m.usersStarted - m.usersCompleted));
+      if (s.severity == TaskRunReport.Severity.INFO) {
+        s.severity = TaskRunReport.Severity.WARNING;
+      }
+    }
+
+    boolean outliers =
+            protocolDetails != null
+                    && protocolDetails.rest != null
+                    && protocolDetails.rest.endpoints != null
+                    && protocolDetails.rest.endpoints.stream().anyMatch(e -> e != null && e.outlierDetected);
+
+    if (outliers) {
+      s.concerns.add("latencyOutliersDetected");
+      if (s.severity == TaskRunReport.Severity.INFO) {
+        s.severity = TaskRunReport.Severity.WARNING;
+      }
+    }
+
+    if (capacity != null
+            && capacity.utilizationPercent != null
+            && capacity.utilizationPercent < 50.0
+            && capacity.assessment != TaskRunReport.CapacityAssessment.NOT_APPLICABLE) {
+      s.concerns.add("lowUtilization=" + String.format("%.1f%%", capacity.utilizationPercent));
+    }
+
+    return s;
+  }
+
+  /* ====================================================================== */
+  /* Executive summary                                                       */
+  /* ====================================================================== */
+
+  private String buildExecutiveSummary(TaskRunReport report) {
+    if (report == null || report.metrics == null) return null;
+
+    TaskRunReport.Metrics m = report.metrics;
+
+    String base =
+            String.format(
+                    "%d/%d users completed; %d requests executed in %.2fs; successRate=%.2f%%; avg=%dms p95=%dms.",
+                    m.usersCompleted,
+                    m.usersStarted,
+                    m.totalRequests,
+                    report.durationSec,
+                    m.successRate * 100.0,
+                    m.latency.avg,
+                    m.latency.p95);
+
+    boolean outliers =
+            report.protocolDetails != null
+                    && report.protocolDetails.rest != null
+                    && report.protocolDetails.rest.endpoints != null
+                    && report.protocolDetails.rest.endpoints.stream().anyMatch(e -> e != null && e.outlierDetected);
+
+    if (outliers) {
+      return base + " Latency outliers were detected on at least one endpoint.";
+    }
+    return base;
+  }
+
+  /* ====================================================================== */
+  /* Helpers                                                                 */
+  /* ====================================================================== */
+
+  private static Duration nullIfZero(Duration d) {
+    if (d == null || d.isZero()) return null;
+    return d;
+  }
+
+  private static int safeMinOne(Integer v) {
+    if (v == null) return 1;
+    return Math.max(1, v);
   }
 
   private static double seconds(Duration d) {

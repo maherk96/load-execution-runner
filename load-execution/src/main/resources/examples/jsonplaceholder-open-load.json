@@ -1,0 +1,66 @@
+{
+  "taskType": "REST",
+  "data": {
+    "testSpec": {
+      "id": "jsonplaceholder-open-test",
+      "globalConfig": {
+        "baseUrl": "https://jsonplaceholder.typicode.com",
+        "headers": {
+          "Content-Type": "application/json",
+          "Accept": "application/json"
+        },
+        "vars": {
+          "userId": "1"
+        },
+        "timeouts": {
+          "connectionTimeoutMs": 5000,
+          "requestTimeoutMs": 10000
+        }
+      },
+      "scenarios": [
+        {
+          "name": "Get and Create Posts",
+          "requests": [
+            {
+              "method": "GET",
+              "path": "/posts",
+              "headers": {},
+              "query": {
+                "_limit": "10"
+              }
+            },
+            {
+              "method": "GET",
+              "path": "/posts/1",
+              "headers": {},
+              "query": {}
+            },
+            {
+              "method": "POST",
+              "path": "/posts",
+              "headers": {},
+              "query": {},
+              "body": {
+                "title": "Load Test Post",
+                "body": "This is a test post from load execution runner",
+                "userId": 1
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "execution": {
+      "thinkTime": {
+        "type": "FIXED",
+        "fixedMs": 500
+      },
+      "loadModel": {
+        "type": "OPEN",
+        "arrivalRatePerSec": 5.0,
+        "maxConcurrent": 50,
+        "duration": "PT1M"
+      }
+    }
+  }
+}

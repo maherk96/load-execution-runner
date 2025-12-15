@@ -1,0 +1,71 @@
+{
+  "taskType": "REST",
+  "data": {
+    "testSpec": {
+      "id": "jsonplaceholder-closed-test",
+      "globalConfig": {
+        "baseUrl": "https://jsonplaceholder.typicode.com",
+        "headers": {
+          "Content-Type": "application/json",
+          "Accept": "application/json"
+        },
+        "vars": {
+          "userId": "1"
+        },
+        "timeouts": {
+          "connectionTimeoutMs": 5000,
+          "requestTimeoutMs": 10000
+        }
+      },
+      "scenarios": [
+        {
+          "name": "CRUD Operations",
+          "requests": [
+            {
+              "method": "GET",
+              "path": "/users",
+              "headers": {},
+              "query": {}
+            },
+            {
+              "method": "GET",
+              "path": "/users/1/posts",
+              "headers": {},
+              "query": {}
+            },
+            {
+              "method": "PUT",
+              "path": "/posts/1",
+              "headers": {},
+              "query": {},
+              "body": {
+                "id": 1,
+                "title": "Updated Post Title",
+                "body": "Updated post body from closed load test",
+                "userId": 1
+              }
+            },
+            {
+              "method": "DELETE",
+              "path": "/posts/1",
+              "headers": {},
+              "query": {}
+            }
+          ]
+        }
+      ]
+    },
+    "execution": {
+      "thinkTime": {
+        "type": "RANDOM",
+        "min": 200,
+        "max": 1000
+      },
+      "loadModel": {
+        "type": "CLOSED",
+        "users": 10,
+        "iterations": 100
+      }
+    }
+  }
+}

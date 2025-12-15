@@ -16,6 +16,7 @@ import java.util.concurrent.atomic.AtomicLong;
  * inclusion in the final report.
  */
 final class ErrorTracker {
+
   private static final int MAX_ERROR_SAMPLES = 5;
 
   private final AtomicLong totalErrors = new AtomicLong();
@@ -26,6 +27,7 @@ final class ErrorTracker {
     totalErrors.incrementAndGet();
     String key = classifyError(t);
     errorBreakdown.computeIfAbsent(key, k -> new AtomicLong()).incrementAndGet();
+
     if (t != null && errorSamples.size() < MAX_ERROR_SAMPLES) {
       errorSamples.add(buildErrorSample(key, t));
     }
@@ -33,7 +35,6 @@ final class ErrorTracker {
 
   void recordFailureCategory(String category) {
     totalErrors.incrementAndGet();
-    // Preserve caller-provided category casing; tests expect exact key
     String key = category == null || category.isBlank() ? "UNKNOWN" : category;
     errorBreakdown.computeIfAbsent(key, k -> new AtomicLong()).incrementAndGet();
   }
@@ -43,80 +44,91 @@ final class ErrorTracker {
   }
 
   Map<String, Long> breakdownSnapshot() {
-    Map<String, Long> map = new java.util.HashMap<>();
-    for (var e : errorBreakdown.entrySet()) map.put(e.getKey(), e.getValue().get());
-    return java.util.Map.copyOf(map);
+    Map<String, Long> snapshot = new java.util.HashMap<>();
+    for (var e : errorBreakdown.entrySet()) {
+      snapshot.put(e.getKey(), e.getValue().get());
+    }
+    return Map.copyOf(snapshot);
   }
 
   List<TaskRunReport.ErrorSample> samplesSnapshot() {
     return List.copyOf(errorSamples);
   }
 
+  /* ------------------------------------------------------------ */
+
   private String classifyError(Throwable t) {
     if (t == null) return "UNKNOWN";
-    Throwable rootCause = t;
-    while (rootCause.getCause() != null) {
-      rootCause = rootCause.getCause();
+
+    Throwable root = t;
+    while (root.getCause() != null) {
+      root = root.getCause();
     }
-    var clsName = rootCause.getClass().getSimpleName();
-    return switch (clsName) {
+
+    return switch (root.getClass().getSimpleName()) {
       case "ConnectException" -> "CONNECTION_REFUSED";
       case "SocketTimeoutException" -> "SOCKET_TIMEOUT";
       case "UnknownHostException" -> "UNKNOWN_HOST";
       case "SSLException" -> "SSL_ERROR";
       case "HttpTimeoutException" -> "HTTP_TIMEOUT";
-      default -> clsName.isBlank() ? "EXCEPTION" : clsName;
+      default -> root.getClass().getSimpleName().isBlank()
+              ? "EXCEPTION"
+              : root.getClass().getSimpleName();
     };
   }
 
   private TaskRunReport.ErrorSample buildErrorSample(String type, Throwable t) {
-    Throwable rootCause = t;
-    while (rootCause.getCause() != null) {
-      rootCause = rootCause.getCause();
+    Throwable root = t;
+    while (root.getCause() != null) {
+      root = root.getCause();
     }
 
-    String msg = t.getMessage();
-    if (msg == null || msg.equals("null")) {
-      msg = rootCause.getMessage();
+    String message = t.getMessage();
+    if (message == null || message.equals("null")) {
+      message = root.getMessage();
     }
-    if (msg == null || msg.equals("null")) {
-      msg = rootCause.getClass().getSimpleName() + " occurred";
+    if (message == null || message.equals("null")) {
+      message = root.getClass().getSimpleName() + " occurred";
     }
 
     List<String> frames = new ArrayList<>();
 
-    if (rootCause != t) {
+    if (root != t) {
       frames.add(
-          "ROOT CAUSE: "
-              + rootCause.getClass().getSimpleName()
-              + " - "
-              + (rootCause.getMessage() != null ? rootCause.getMessage() : "no message"));
-      StackTraceElement[] rootStack = rootCause.getStackTrace();
-      int rootLimit = Math.min(3, rootStack.length);
-      for (int i = 0; i < rootLimit; i++) {
+              "ROOT CAUSE: "
+                      + root.getClass().getSimpleName()
+                      + " - "
+                      + (root.getMessage() != null ? root.getMessage() : "no message"));
+
+      StackTraceElement[] rootStack = root.getStackTrace();
+      for (int i = 0; i < Math.min(3, rootStack.length); i++) {
         frames.add("  at " + formatStackFrame(rootStack[i]));
       }
       frames.add("");
     }
 
     frames.add("WRAPPED BY: " + t.getClass().getSimpleName());
-    StackTraceElement[] stackTrace = t.getStackTrace();
-    int limit = Math.min(10, stackTrace.length);
-    for (int i = 0; i < limit; i++) {
-      frames.add("  at " + formatStackFrame(stackTrace[i]));
+    StackTraceElement[] stack = t.getStackTrace();
+    for (int i = 0; i < Math.min(10, stack.length); i++) {
+      frames.add("  at " + formatStackFrame(stack[i]));
     }
 
-    return new TaskRunReport.ErrorSample(type, msg, frames);
+    TaskRunReport.ErrorSample sample = new TaskRunReport.ErrorSample();
+    sample.type = type;
+    sample.message = message;
+    sample.stackTrace = frames;
+
+    return sample;
   }
 
   private String formatStackFrame(StackTraceElement frame) {
     return frame.getClassName()
-        + "."
-        + frame.getMethodName()
-        + "("
-        + frame.getFileName()
-        + ":"
-        + frame.getLineNumber()
-        + ")";
+            + "."
+            + frame.getMethodName()
+            + "("
+            + frame.getFileName()
+            + ":"
+            + frame.getLineNumber()
+            + ")";
   }
 }
