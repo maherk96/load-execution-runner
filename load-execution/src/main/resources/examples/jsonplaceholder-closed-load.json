@@ -19,37 +19,32 @@
       },
       "scenarios": [
         {
-          "name": "CRUD Operations",
+          "name": "Get and Create Posts",
           "requests": [
             {
               "method": "GET",
-              "path": "/users",
+              "path": "/posts",
               "headers": {},
-              "query": {}
-            },
-            {
-              "method": "GET",
-              "path": "/users/1/posts",
-              "headers": {},
-              "query": {}
-            },
-            {
-              "method": "PUT",
-              "path": "/posts/1",
-              "headers": {},
-              "query": {},
-              "body": {
-                "id": 1,
-                "title": "Updated Post Title",
-                "body": "Updated post body from closed load test",
-                "userId": 1
+              "query": {
+                "_limit": "10"
               }
             },
             {
-              "method": "DELETE",
+              "method": "GET",
               "path": "/posts/1",
               "headers": {},
               "query": {}
+            },
+            {
+              "method": "POST",
+              "path": "/posts",
+              "headers": {},
+              "query": {},
+              "body": {
+                "title": "Load Test Post",
+                "body": "This is a test post from load execution runner",
+                "userId": 1
+              }
             }
           ]
         }
@@ -58,13 +53,13 @@
     "execution": {
       "thinkTime": {
         "type": "RANDOM",
-        "min": 200,
-        "max": 1000
+        "min": 5,
+        "max": 10
       },
       "loadModel": {
         "type": "CLOSED",
-        "users": 10,
-        "iterations": 100
+        "users": 100,
+        "iterations": 10000
       }
     }
   }

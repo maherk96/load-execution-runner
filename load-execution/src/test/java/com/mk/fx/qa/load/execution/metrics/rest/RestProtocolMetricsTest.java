@@ -45,8 +45,6 @@ class RestProtocolMetricsTest {
     assertEquals(10L, ep.latency.min);
     assertEquals(20L, ep.latency.max);
     assertEquals(15L, ep.latency.avg);
-    assertNotNull(ep.latency.p95);
-    assertNotNull(ep.latency.p99);
     assertTrue(ep.latency.p95 >= 10 && ep.latency.p95 <= 20);
     assertTrue(ep.latency.p99 >= 10 && ep.latency.p99 <= 20);
 
@@ -54,7 +52,7 @@ class RestProtocolMetricsTest {
     assertEquals(2L, ep.statusBreakdown.get("2xx"));
     assertEquals(1L, ep.statusBreakdown.get("HTTP_4xx"));
     assertEquals(1L, ep.statusBreakdown.get("HTTP_5xx"));
-    assertFalse(Boolean.TRUE.equals(ep.outlierDetected));
+    assertFalse(ep.outlierDetected);
   }
 
   @Test
@@ -69,10 +67,10 @@ class RestProtocolMetricsTest {
     m.applyTo(r);
 
     TaskRunReport.RestEndpoint ep = r.protocolDetails.rest.endpoints.get(0);
-    assertTrue(Boolean.TRUE.equals(ep.outlierDetected));
+    assertTrue(ep.outlierDetected);
     assertNotNull(ep.outlierInfo);
     assertNotNull(ep.outlierTimestamp);
-    assertEquals(42, ep.likelyAffectedUser);
+    assertEquals(42, ep.likelyAffectedUserId);
     assertTrue(ep.latency.max > 5 * ep.latency.p95);
   }
 
@@ -89,12 +87,12 @@ class RestProtocolMetricsTest {
     assertEquals(2, ep.total);
     assertEquals(0, ep.success);
     assertEquals(2, ep.failure);
-    assertNull(ep.latency.avg);
-    assertNull(ep.latency.p95);
-    assertNull(ep.latency.p99);
-    // min/max default to 0 when no successes were recorded (no latency samples)
+    // When no latency samples exist, avg/min/max should be 0
+    assertEquals(0L, ep.latency.avg);
     assertEquals(0L, ep.latency.min);
     assertEquals(0L, ep.latency.max);
+    assertEquals(0L, ep.latency.p95);
+    assertEquals(0L, ep.latency.p99);
     assertEquals(2L, ep.statusBreakdown.get("HTTP_4xx"));
   }
 

@@ -56,7 +56,7 @@ class ErrorTrackerTest {
     assertFalse(samples.isEmpty());
     TaskRunReport.ErrorSample s = samples.get(0);
     assertNotNull(s.message);
-    assertFalse(s.stack.isEmpty());
-    assertTrue(s.stack.get(0).startsWith("ROOT CAUSE:"));
+    assertFalse(s.stackTrace.isEmpty());
+    assertTrue(s.stackTrace.get(0).startsWith("ROOT CAUSE:"));
   }
 }

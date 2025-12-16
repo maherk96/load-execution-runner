@@ -1,0 +1,100 @@
+{
+  "taskType": "REST",
+  "data": {
+    "testSpec": {
+      "id": "mock-large-dataset-open-test",
+      "globalConfig": {
+        "baseUrl": "http://localhost:8080",
+        "headers": {
+          "Content-Type": "application/json",
+          "Accept": "application/json",
+          "User-Agent": "LoadTestRunner/1.0"
+        },
+        "vars": {
+          "apiKey": "test-key-123",
+          "version": "v1"
+        },
+        "timeouts": {
+          "connectionTimeoutMs": 5000,
+          "requestTimeoutMs": 30000
+        }
+      },
+      "scenarios": [
+        {
+          "name": "API Performance Test",
+          "requests": [
+            {
+              "method": "GET",
+              "path": "/api/health",
+              "headers": {
+                "X-API-Key": "{{apiKey}}"
+              },
+              "query": {}
+            },
+            {
+              "method": "GET",
+              "path": "/api/users",
+              "headers": {},
+              "query": {
+                "page": "1",
+                "pageSize": "50"
+              }
+            },
+            {
+              "method": "POST",
+              "path": "/api/analytics/events",
+              "headers": {},
+              "query": {},
+              "body": {
+                "event": "page_view",
+                "timestamp": "2025-12-15T10:30:00Z",
+                "userId": "test-user-123",
+                "metadata": {
+                  "page": "/products",
+                  "referrer": "/home"
+                }
+              }
+            },
+            {
+              "method": "GET",
+              "path": "/api/search",
+              "headers": {},
+              "query": {
+                "q": "laptop",
+                "filters": "category:electronics",
+                "limit": "20"
+              }
+            },
+            {
+              "method": "GET",
+              "path": "/api/reports/summary",
+              "headers": {},
+              "query": {
+                "period": "daily",
+                "startDate": "2025-12-01",
+                "endDate": "2025-12-15"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "execution": {
+      "thinkTime": {
+        "type": "RANDOM",
+        "min": 1,
+        "max": 3
+      },
+      "loadModel": {
+        "type": "OPEN",
+        "arrivalRatePerSec": 150.0,
+        "maxConcurrent": 100,
+        "duration": "1m",
+        "openOptions": {
+          "saturationPolicy": "DROP",
+          "iterationFailure": "CONTINUE"
+        }
+      }
+    }
+  }
+}

@@ -255,7 +255,7 @@ class LoadMetricsTest {
       assertNotNull(report.protocolDetails);
       assertNotNull(report.protocolDetails.rest);
       assertNotNull(report.protocolDetails.rest.endpoints);
-      assertEquals("CANCELLED", report.testCompletion.reason);
+      assertEquals("CANCELLED", report.completion.reason.toString());
     }
 
     @Test
@@ -265,7 +265,7 @@ class LoadMetricsTest {
       m.setCompletionContext(true, true, 2, 0);
 
       TaskRunReport report = m.buildReport();
-      assertEquals("CANCELLED", report.testCompletion.reason);
+      assertEquals("CANCELLED", report.completion.reason.toString());
     }
 
     @Test
@@ -277,12 +277,13 @@ class LoadMetricsTest {
       m.setCompletionContext(false, true, 2, 0);
 
       TaskRunReport report = m.buildReport();
-      assertNotNull(report.config);
-      assertNotNull(report.config.expectedRps);
-      assertEquals(12.0, report.config.expectedRps, 0.5);
-      assertNotNull(report.testCompletion);
-      assertEquals("HOLD_EXPIRED", report.testCompletion.reason);
-      assertEquals(Duration.ofSeconds(1), report.config.holdFor);
+      assertNotNull(report.execution);
+      assertNotNull(report.execution.expectedRps);
+      assertEquals(12.0, report.execution.expectedRps, 0.5);
+      assertNotNull(report.completion);
+      assertEquals("HOLD_EXPIRED", report.completion.reason.toString());
+      assertNotNull(report.execution.closed);
+      assertEquals(Duration.ofSeconds(1), report.execution.closed.holdFor);
     }
 
     @Test
@@ -293,10 +294,11 @@ class LoadMetricsTest {
       m.recordRequestSuccess(5);
 
       TaskRunReport report = m.buildReport();
-      assertNotNull(report.config);
-      assertEquals(25.0, report.config.expectedRps, 0.01);
-      assertEquals(Duration.ZERO, report.config.openDuration);
-      assertEquals("HOLD_EXPIRED", report.testCompletion.reason);
+      assertNotNull(report.execution);
+      assertEquals(25.0, report.execution.expectedRps, 0.01);
+      assertNotNull(report.execution.open);
+      assertEquals(Duration.ZERO, report.execution.open.duration);
+      assertEquals("HOLD_EXPIRED", report.completion.reason.toString());
     }
   }
 
@@ -469,3 +471,4 @@ class LoadMetricsTest {
     }
   }
 }
+

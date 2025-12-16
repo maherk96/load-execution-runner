@@ -103,7 +103,7 @@ class RestLoadTaskProcessorTest {
     var report = registry.getReport(taskId).orElseThrow();
     assertNotNull(report.metrics);
     // Expect cancellation due to iteration exception in open executor
-    assertEquals("CANCELLED", report.testCompletion.reason);
+    assertEquals("CANCELLED", report.completion.reason.toString());
   }
 
   @Test

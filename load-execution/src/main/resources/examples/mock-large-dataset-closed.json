@@ -1,0 +1,132 @@
+{
+  "taskType": "REST",
+  "data": {
+    "testSpec": {
+      "id": "mock-large-dataset-closed-test",
+      "globalConfig": {
+        "baseUrl": "http://localhost:8080",
+        "headers": {
+          "Content-Type": "application/json",
+          "Accept": "application/json",
+          "User-Agent": "LoadTestRunner/1.0"
+        },
+        "vars": {
+          "userId": "1",
+          "environment": "test"
+        },
+        "timeouts": {
+          "connectionTimeoutMs": 5000,
+          "requestTimeoutMs": 30000
+        }
+      },
+      "scenarios": [
+        {
+          "name": "E-Commerce Complete Workflow",
+          "requests": [
+            {
+              "method": "GET",
+              "path": "/api/users",
+              "headers": {},
+              "query": {
+                "page": "1",
+                "limit": "20"
+              }
+            },
+            {
+              "method": "GET",
+              "path": "/api/products",
+              "headers": {},
+              "query": {
+                "category": "electronics",
+                "sort": "price"
+              }
+            },
+            {
+              "method": "GET",
+              "path": "/api/products/123",
+              "headers": {},
+              "query": {}
+            },
+            {
+              "method": "POST",
+              "path": "/api/cart/items",
+              "headers": {},
+              "query": {},
+              "body": {
+                "productId": "123",
+                "quantity": 2,
+                "userId": "{{userId}}"
+              }
+            },
+            {
+              "method": "GET",
+              "path": "/api/cart",
+              "headers": {},
+              "query": {
+                "userId": "{{userId}}"
+              }
+            },
+            {
+              "method": "POST",
+              "path": "/api/orders",
+              "headers": {},
+              "query": {},
+              "body": {
+                "userId": "{{userId}}",
+                "items": [
+                  {
+                    "productId": "123",
+                    "quantity": 2
+                  }
+                ],
+                "shippingAddress": {
+                  "street": "123 Main St",
+                  "city": "TestCity",
+                  "zip": "12345"
+                },
+                "paymentMethod": "credit_card"
+              }
+            },
+            {
+              "method": "GET",
+              "path": "/api/orders/tracking",
+              "headers": {},
+              "query": {
+                "userId": "{{userId}}"
+              }
+            },
+            {
+              "method": "GET",
+              "path": "/api/recommendations",
+              "headers": {},
+              "query": {
+                "userId": "{{userId}}",
+                "limit": "10"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "execution": {
+      "thinkTime": {
+        "type": "RANDOM",
+        "min": 1,
+        "max": 5
+      },
+      "loadModel": {
+        "type": "CLOSED",
+        "users": 100,
+        "iterations": 500,
+        "rampUp": "30s",
+        "warmup": "10s",
+        "holdFor": "2m",
+        "closedOptions": {
+          "stopMode": "ALL_COMPLETED",
+          "failureMode": "STOP_USER",
+          "shutdownPolicy": "GRACEFUL"
+        }
+      }
+    }
+  }
+}
